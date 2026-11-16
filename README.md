@@ -97,3 +97,7 @@ public/
   styles.css       Styles
   theme.js         Applies the saved theme before first paint
 ```
+
+## License
+
+The code is released under the [MIT License](LICENSE). The test items are the IPIP Big-Five Factor Markers, which are in the public domain and are not covered by this license.
