@@ -189,7 +189,7 @@ function viewTest(){
         <span class="key" aria-hidden="true">${j+1}</span><span>${ANSWER_TXT[j]}</span><span class="mark" aria-hidden="true"></span></button>`).join("")}
     </div>
     <div class="quiz-nav">
-      <button class="btn" type="button" id="prev">${qi===0 ? (mode ? "Kembali ke undangan" : "Kembali ke beranda") : "Sebelumnya"}</button>
+      <button class="btn" type="button" id="prev">${qi===0 ? (mode ? "Ganti nama" : "Kembali ke beranda") : "Sebelumnya"}</button>
       <span class="keys-hint">Bisa juga tekan angka 1 sampai 5</span>
       ${cur!==null && qi<TOTAL-1 ? `<button class="btn primary" type="button" id="next">Berikutnya</button>` : ""}
       ${cur!==null && qi===TOTAL-1 ? `<button class="btn primary" type="button" id="finish">${mode ? "Kirim dan lihat hasil" : "Lihat hasil"}</button>` : ""}
@@ -211,7 +211,7 @@ function next(){
 }
 function prev(){
   clearTimeout(advanceTimer);
-  if (qi===0) return mode ? viewInviteJoin(mode.code) : nav("/");
+  if (qi===0) return mode ? viewInviteJoin(mode.code, { edit: true }) : nav("/");
   qi--; saveDraft(); viewTest(); $("#statement")?.focus({preventScroll:true});
 }
 let finishing = false;
@@ -253,6 +253,7 @@ async function finish(){
       return;
     }
     resetTest();
+    if (outcome === "ok" || outcome === "already") lsSet(`gangsal-inv-done-${inv.code}`, outcome === "ok" ? encode(s) : "1");
     lsSet("gangsal-last", encode(s));
     ssSet("gangsal-mine", encode(s));
     saveState = {state: MSG[0], msg: MSG[1]};
@@ -617,7 +618,7 @@ async function fetchInvite(code){
   return res.json();
 }
 let joinCache = { code:null, inv:null, title:null };
-async function viewInviteJoin(code){
+async function viewInviteJoin(code, opts = {}){
   setNav("test"); setTitle("Undangan tes"); quizActive = false;
   const titleKey = location.hash.slice(1);
   $("#view").innerHTML = `<section class="form-page"><p class="lede">Memuat undangan...</p></section>`;
@@ -646,24 +647,40 @@ async function viewInviteJoin(code){
     $("#home").onclick = ()=>nav("/");
     return;
   }
-  const prevName = mode && mode.code === code ? mode.name : "";
+  const NAME_KEY = `gangsal-inv-name-${code}`;
+  const done = lsGet(`gangsal-inv-done-${code}`);
+  if (done){
+    $("#view").innerHTML = `<section class="form-page join">
+      <h1>Hasilmu sudah terkirim</h1>
+      <p class="lede">Perangkat ini sudah mengirim hasil untuk undangan ${title ? `"${esc(title)}"` : esc(code)}${lsGet(NAME_KEY) ? ` atas nama ${esc(lsGet(NAME_KEY))}` : ""}. Satu perangkat hanya bisa mengirim satu kali per undangan.</p>
+      <div class="row">${decode(done) ? `<button class="btn primary" id="seeMine" type="button">Lihat hasilku</button>` : ""}<button class="btn" id="home" type="button">Ke beranda</button></div>
+    </section>`;
+    if ($("#seeMine")) $("#seeMine").onclick = ()=>{ ssSet("gangsal-mine", done); nav("/h/"+done); };
+    $("#home").onclick = ()=>nav("/");
+    return;
+  }
+  const savedName = (mode && mode.code === code ? mode.name : lsGet(NAME_KEY)) || "";
+  const start = name => {
+    lsSet(NAME_KEY, name);
+    setMode({ code, pub: inv.pub, name, title });
+    viewTest(); $("#statement")?.focus({preventScroll:true}); window.scrollTo(0,0);
+  };
+  // Sudah pernah mulai di perangkat ini (dan tidak sedang kembali dari pernyataan pertama): langsung lanjutkan.
+  if (!opts.edit && savedName && !(mode && mode.code === code)){
+    const draft = (()=>{ try { return JSON.parse(lsGet(`gangsal-inv-${code}`)||"null"); } catch(e){ return null; } })();
+    if (draft && Array.isArray(draft.a) && draft.a.some(v=>v!==null)) return start(savedName);
+  }
   $("#view").innerHTML = `
-  <section class="form-page">
-    <p class="who">Kamu diundang mengikuti tes kepribadian Big Five</p>
-    <h1>${title ? esc(title) : "Undangan tes"}</h1>
-    <p class="lede">Bisa diisi sampai ${fmtTime(inv.expiresAt)} (${fmtLeft(left)}). Ada 50 pernyataan, sekitar 8 menit.</p>
+  <section class="form-page join">
+    <p class="join-ctx">${title ? `<b>${esc(title)}</b>` : "Undangan tes kepribadian Big Five"}<span>Terbuka ${fmtLeft(left)}, 50 pernyataan, sekitar 8 menit</span></p>
     <form id="joinStart" class="form" novalidate>
       <div class="field">
-        <label for="pName">Nama lengkap</label>
-        <input id="pName" name="pName" maxlength="80" autocomplete="name" value="${esc(prevName)}" required>
+        <label for="pName" class="join-q">Siapa namamu?</label>
+        <input id="pName" name="pName" class="join-input" maxlength="80" autocomplete="name" autocapitalize="words" enterkeyhint="go" value="${esc(savedName)}" placeholder="Nama lengkap" required>
         <p class="field-error" id="pNameErr" role="alert" hidden></p>
       </div>
-      <div class="consent">
-        <label class="check"><input type="checkbox" id="pConsent"><span>Saya setuju nama dan hasil tes saya dikirim ke pembuat undangan ini. Skor saya juga ikut rekap umum Gangsal tanpa nama.</span></label>
-        <p class="field-error" id="pConsentErr" role="alert" hidden></p>
-      </div>
-      <p class="hint">Nama dienkripsi di perangkatmu dan hanya bisa dibaca pembuat undangan. Hasil tes sebaiknya tidak menjadi satu-satunya dasar keputusan tentang dirimu.</p>
-      <div class="row"><button class="btn primary" type="submit">Mulai tes</button></div>
+      <button class="btn primary join-go" type="submit">Mulai tes</button>
+      <p class="hint">Dengan menekan Mulai tes, kamu setuju nama dan hasil tesmu dikirim ke pembuat undangan ini, dan skormu ikut rekap umum tanpa nama. Namamu dienkripsi di perangkat ini; hanya pembuat undangan yang bisa membacanya.</p>
     </form>
   </section>`;
   const nm = $("#pName"), nmErr = $("#pNameErr");
@@ -673,18 +690,12 @@ async function viewInviteJoin(code){
     bad ? nm.setAttribute("aria-invalid","true") : nm.removeAttribute("aria-invalid");
     return !bad;
   };
-  nm.onblur = ()=>{ if (nm.value) checkName(); };
   nm.oninput = ()=>{ nmErr.hidden = true; nm.removeAttribute("aria-invalid"); };
-  $("#pConsent").onchange = ()=>{ $("#pConsentErr").hidden = true; };
+  nm.focus({ preventScroll: true });
   $("#joinStart").onsubmit = e=>{
     e.preventDefault();
-    const okName = checkName();
-    const okC = $("#pConsent").checked;
-    if (!okC){ const ce = $("#pConsentErr"); ce.hidden = false; ce.textContent = "Centang persetujuan dulu supaya hasilmu bisa dikirim."; }
-    if (!okName){ nm.focus(); return; }
-    if (!okC){ $("#pConsent").focus(); return; }
-    setMode({ code, pub: inv.pub, name: nm.value.trim().replace(/\s+/g," "), title });
-    viewTest(); $("#statement")?.focus({preventScroll:true}); window.scrollTo(0,0);
+    if (!checkName()){ nm.focus(); return; }
+    start(nm.value.trim().replace(/\s+/g," "));
   };
 }
 

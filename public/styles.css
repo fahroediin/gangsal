@@ -290,6 +290,15 @@ input[aria-invalid="true"]{border-color:var(--warn)}
   .rtable td.when{grid-column:1/-1;font-size:.92rem}
 }
 @media (max-width:360px){.rtable td.sc::before{font-size:.74rem}.rtable tr{padding:14px 12px;gap:8px 4px}}
+/* halaman peserta undangan: langsung isi nama */
+.join{max-width:560px;padding-top:clamp(8px,4vh,40px)}
+.join-ctx{display:flex;flex-direction:column;gap:2px;font-size:1.05rem;padding:14px 18px;border-radius:14px;background:var(--soft)}
+.join-ctx b{font-size:1.15rem;overflow-wrap:anywhere}
+.join-ctx span{color:var(--muted);font-size:.98rem}
+.join .form{gap:16px}
+.join-q{font-family:var(--f-display);font-weight:800 !important;font-size:clamp(2rem,7vw,2.8rem) !important;line-height:1.1;letter-spacing:-.015em}
+.join-input{font-size:1.3rem !important;min-height:62px !important}
+.join-go{width:100%;min-height:62px;font-size:1.15rem}
 .my-inv{margin-top:28px;padding-top:24px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .my-inv h2{font-size:1.3rem}
 .inv-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
