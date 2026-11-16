@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "tes-16-tipe",
+      "name": "gangsal",
       "dependencies": {
         "@resvg/resvg-js": "2.6.2",
       },

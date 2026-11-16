@@ -1,14 +1,14 @@
 # Deploy Gangsal (Big Five) ke VPS
 
-Target: VPS AlmaLinux yang sama dengan ba.learning.my.id (Bun, PM2, nginx sudah ada).
-Isi `<SUBDOMAIN>` dan `<PORT>` sebelum menjalankan. Port 3010 sudah dipakai `ba-handbook-api`; pakai port kosong, misalnya 3020.
+Target: VPS Linux (contoh di sini AlmaLinux) dengan Bun, PM2, dan nginx sudah terpasang.
+Isi `<SUBDOMAIN>` dan `<PORT>` sebelum menjalankan. Pilih port yang belum dipakai aplikasi lain di server.
 
 ## 1. Salin kode
 
 ```bash
 # di VPS
 sudo mkdir -p /opt/gangsal && sudo chown $USER /opt/gangsal
-# dari laptop (folder WEB/tes-16-tipe)
+# dari laptop (folder proyek)
 scp -r server.ts og.ts public package.json bun.lock user@vps:/opt/gangsal/
 # di VPS
 cd /opt/gangsal && bun install --production
