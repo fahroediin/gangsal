@@ -3,6 +3,7 @@
 // Jalankan: bun server.ts   (env: PORT, HOST, DB_PATH, TRUST_PROXY=1 bila di belakang nginx)
 import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync, statSync, chmodSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import { join, normalize, dirname, sep } from "node:path";
 import { ITEMS, DIMS, score, level, decode, persona } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
@@ -33,6 +34,101 @@ const upsert = db.prepare(`INSERT INTO results (cid,answers,e,a,c,s,i,created_at
   ON CONFLICT(cid) DO UPDATE SET answers=excluded.answers,e=excluded.e,a=excluded.a,c=excluded.c,s=excluded.s,i=excluded.i,updated_at=excluded.updated_at`);
 const allScores = db.prepare("SELECT e,a,c,s,i FROM results");
 
+/* ---------- undangan ---------- */
+// Server hanya menyimpan data terenkripsi untuk nama dan judul; kuncinya ada di bagian # link milik pembuat.
+db.exec(`CREATE TABLE IF NOT EXISTS invites (
+  code TEXT PRIMARY KEY,
+  pub TEXT NOT NULL,                 -- kunci publik ECDH pembuat (untuk enkripsi nama)
+  title_iv TEXT, title_ct TEXT,      -- judul terenkripsi (opsional)
+  admin_hash TEXT NOT NULL,          -- SHA-256 token admin; token aslinya hanya di link rekap
+  max_participants INTEGER,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS invite_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL REFERENCES invites(code) ON DELETE CASCADE,
+  cid TEXT NOT NULL,
+  name_epk TEXT NOT NULL, name_iv TEXT NOT NULL, name_ct TEXT NOT NULL,   -- nama terenkripsi
+  e INTEGER NOT NULL, a INTEGER NOT NULL, c INTEGER NOT NULL, s INTEGER NOT NULL, i INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(code, cid)
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS invite_results_code ON invite_results(code)");
+const inviteInsert = db.prepare(`INSERT INTO invites (code,pub,title_iv,title_ct,admin_hash,max_participants,created_at,expires_at)
+  VALUES ($code,$pub,$tiv,$tct,$hash,$max,$now,$exp)`);
+const inviteGet = db.prepare("SELECT * FROM invites WHERE code = $code");
+const inviteCount = db.prepare("SELECT COUNT(*) AS n FROM invite_results WHERE code = $code");
+const inviteResultInsert = db.prepare(`INSERT INTO invite_results (code,cid,name_epk,name_iv,name_ct,e,a,c,s,i,created_at)
+  VALUES ($code,$cid,$epk,$iv,$ct,$e,$a,$c,$s,$i,$now)`);
+const inviteRows = db.prepare("SELECT name_epk,name_iv,name_ct,e,a,c,s,i,created_at FROM invite_results WHERE code = $code ORDER BY id");
+const inviteDelRows = db.prepare("DELETE FROM invite_results WHERE code = $code");
+const inviteDel = db.prepare("DELETE FROM invites WHERE code = $code");
+const cleanupRows = db.prepare("DELETE FROM invite_results WHERE code IN (SELECT code FROM invites WHERE expires_at < $cut)");
+const cleanupInvites = db.prepare("DELETE FROM invites WHERE expires_at < $cut");
+
+export const RETENTION_MS = 90 * 24 * 3600_000;
+/** Hapus undangan beserta data per peserta 90 hari setelah batas waktunya habis. Skor anonim di rekap umum tetap ada. */
+export function cleanupInvitesNow(now = Date.now()) {
+  const cut = now - RETENTION_MS;
+  db.transaction(() => { cleanupRows.run({ $cut: cut }); cleanupInvites.run({ $cut: cut }); })();
+}
+cleanupInvitesNow();
+setInterval(() => { try { cleanupInvitesNow(); } catch (e) { console.error("pembersihan gagal", e); } }, 3600_000).unref?.();
+
+const DURATIONS: Record<string, number> = { "1h": 3600_000, "1d": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 };
+const CODE_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";   // tanpa 0/o/1/l/i yang mudah tertukar
+const CODE_RE = /^[23456789abcdefghjkmnpqrstuvwxyz]{8}$/;
+const B64U = (min: number, max: number) => new RegExp(`^[A-Za-z0-9_-]{${min},${max}}$`);
+const PUB_RE = B64U(87, 87), IV_RE = B64U(16, 16), HEX64 = /^[0-9a-f]{64}$/;
+const NAME_CT_RE = B64U(22, 700), TITLE_CT_RE = B64U(22, 700), TOKEN_RE = B64U(43, 43);
+
+function newCode(): string {
+  for (;;) {
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    const code = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+    if (!inviteGet.get({ $code: code })) return code;
+  }
+}
+const sha256Hex = (t: string) => new Bun.CryptoHasher("sha256").update(t).digest("hex");
+function adminOk(inv: any, token: string | null): boolean {
+  if (!token || !TOKEN_RE.test(token)) return false;
+  const a = Buffer.from(sha256Hex(token)), b = Buffer.from(String(inv.admin_hash));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function validateInvite(body: any):
+  | { ok: true; row: Record<string, string | number | null> }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, error: "body" };
+  const { pub, title, adminHash, duration, maxParticipants } = body;
+  if (typeof pub !== "string" || !PUB_RE.test(pub)) return { ok: false, error: "pub" };
+  if (typeof adminHash !== "string" || !HEX64.test(adminHash)) return { ok: false, error: "adminHash" };
+  if (typeof duration !== "string" || !(duration in DURATIONS)) return { ok: false, error: "duration" };
+  if (maxParticipants !== null && maxParticipants !== undefined &&
+      !(Number.isInteger(maxParticipants) && maxParticipants >= 1 && maxParticipants <= 500)) return { ok: false, error: "maxParticipants" };
+  if (title !== null && title !== undefined &&
+      !(title && typeof title === "object" && IV_RE.test(String(title.iv)) && TITLE_CT_RE.test(String(title.ct)))) return { ok: false, error: "title" };
+  const now = Date.now();
+  return { ok: true, row: {
+    $pub: pub, $tiv: title ? title.iv : null, $tct: title ? title.ct : null, $hash: adminHash,
+    $max: maxParticipants ?? null, $now: now, $exp: now + DURATIONS[duration],
+  } };
+}
+function validName(n: any): boolean {
+  return !!n && typeof n === "object" && PUB_RE.test(String(n.epk)) && IV_RE.test(String(n.iv)) && NAME_CT_RE.test(String(n.ct));
+}
+const publicInvite = (inv: any, now = Date.now()) => {
+  const n = (inviteCount.get({ $code: inv.code }) as { n: number }).n;
+  const full = inv.max_participants !== null && n >= inv.max_participants;
+  return {
+    code: inv.code, pub: inv.pub,
+    title: inv.title_ct ? { iv: inv.title_iv, ct: inv.title_ct } : null,
+    createdAt: inv.created_at, expiresAt: inv.expires_at,
+    open: now < inv.expires_at && !full, full,
+  };
+};
+
 const CID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_BODY = 2048;
 
@@ -52,13 +148,19 @@ export function makeLimiter(max: number, windowMs: number, maxKeys = 20_000) {
     return false;
   };
 }
-const LIMITS = {
+const freshLimits = () => ({
   request: makeLimiter(600, 60_000),            // semua permintaan, per IP per menit
   writeIp: makeLimiter(20, 60 * 60_000),        // kirim hasil, per IP per jam
   writeAll: makeLimiter(600, 60 * 60_000),      // kirim hasil, total per jam (membatasi pertumbuhan database)
   ogIp: makeLimiter(12, 10 * 60_000),           // render gambar baru, per IP per 10 menit
   ogAll: makeLimiter(30, 60_000),               // render gambar baru, total per menit (melindungi CPU VPS)
-};
+  inviteIp: makeLimiter(10, 60 * 60_000),       // buat undangan, per IP per jam
+  inviteAll: makeLimiter(300, 60 * 60_000),     // buat undangan, total per jam
+  adminIp: makeLimiter(120, 10 * 60_000),       // buka/hapus rekap undangan, per IP per 10 menit
+});
+const LIMITS = freshLimits();
+/** Hanya untuk tes: kosongkan semua pembatas laju. */
+export function resetLimits() { Object.assign(LIMITS, freshLimits()); }
 
 export function validate(body: any):
   | { ok: true; row: Record<string, string | number>; scores: Record<string, number> }
@@ -198,8 +300,87 @@ async function handle(req: Request, ip: string): Promise<Response> {
     if (req.method !== "GET" && req.method !== "HEAD") return json('{"error":"method"}', 405, { Allow: "GET" });
     return json(stats());
   }
+  // --- undangan ---
+  if (path === "/api/invites") {
+    if (req.method !== "POST") return json('{"error":"method"}', 405, { Allow: "POST" });
+    if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return json('{"error":"content-type"}', 415);
+    const raw = await readCapped(req, MAX_BODY);
+    if (raw === null) return json('{"error":"too_large"}', 413);
+    if (LIMITS.inviteIp(ip)) return json('{"error":"rate_limited"}', 429, { "Retry-After": "3600" });
+    let body: unknown;
+    try { body = JSON.parse(raw); } catch { return json('{"error":"json"}', 400); }
+    const v = validateInvite(body);
+    if (!v.ok) return json(JSON.stringify({ error: v.error }), 400);
+    if (LIMITS.inviteAll("*")) return json('{"error":"busy"}', 503, { "Retry-After": "600" });
+    const code = newCode();
+    inviteInsert.run({ ...v.row, $code: code } as any);
+    return json(JSON.stringify({ code, expiresAt: v.row.$exp }), 201);
+  }
+  const im = /^\/api\/invites\/([a-z0-9]{8})(\/results)?$/.exec(path);
+  if (im) {
+    if (!CODE_RE.test(im[1])) return json('{"error":"not_found"}', 404);
+    const inv = inviteGet.get({ $code: im[1] }) as any;
+    if (!inv) return json('{"error":"not_found"}', 404);
+    const now = Date.now();
+    if (!im[2]) {
+      if (req.method === "GET" || req.method === "HEAD") return json(JSON.stringify(publicInvite(inv, now)));
+      if (req.method === "DELETE") {
+        if (LIMITS.adminIp(ip)) return tooMany(600);
+        if (!adminOk(inv, req.headers.get("x-admin-token"))) return json('{"error":"forbidden"}', 403);
+        db.transaction(() => { inviteDelRows.run({ $code: inv.code }); inviteDel.run({ $code: inv.code }); })();
+        return json('{"ok":true}');
+      }
+      return json('{"error":"method"}', 405, { Allow: "GET, DELETE" });
+    }
+    // /api/invites/<kode>/results
+    if (req.method === "GET") {
+      if (LIMITS.adminIp(ip)) return tooMany(600);
+      if (!adminOk(inv, req.headers.get("x-admin-token"))) return json('{"error":"forbidden"}', 403);
+      const rows = (inviteRows.all({ $code: inv.code }) as any[]).map((r) => ({
+        name: { epk: r.name_epk, iv: r.name_iv, ct: r.name_ct },
+        scores: { E: r.e, A: r.a, C: r.c, S: r.s, I: r.i }, at: r.created_at,
+      }));
+      return json(JSON.stringify({ invite: { ...publicInvite(inv, now), maxParticipants: inv.max_participants }, rows }));
+    }
+    if (req.method !== "POST") return json('{"error":"method"}', 405, { Allow: "GET, POST" });
+    if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return json('{"error":"content-type"}', 415);
+    const raw = await readCapped(req, MAX_BODY);
+    if (raw === null) return json('{"error":"too_large"}', 413);
+    if (LIMITS.writeIp(ip)) return json('{"error":"rate_limited"}', 429, { "Retry-After": "3600" });
+    let body: any;
+    try { body = JSON.parse(raw); } catch { return json('{"error":"json"}', 400); }
+    const v = validate(body);
+    if (!v.ok) return json(JSON.stringify({ error: v.error }), 400);
+    if (!validName(body.name)) return json('{"error":"name"}', 400);
+    if (now >= inv.expires_at) return json('{"error":"expired"}', 410);
+    const pub = publicInvite(inv, now);
+    if (pub.full) return json('{"error":"full"}', 409);
+    if (LIMITS.writeAll("*")) return json('{"error":"busy"}', 503, { "Retry-After": "600" });
+    try {
+      db.transaction(() => {
+        inviteResultInsert.run({ $code: inv.code, $cid: body.cid, $epk: body.name.epk, $iv: body.name.iv, $ct: body.name.ct,
+          $e: v.scores.E, $a: v.scores.A, $c: v.scores.C, $s: v.scores.S, $i: v.scores.I, $now: now });
+        upsert.run(v.row as any);   // skor anonim juga masuk rekap umum
+      })();
+    } catch (e: any) {
+      if (String(e?.message ?? e).includes("UNIQUE")) return json('{"error":"already"}', 409);
+      throw e;
+    }
+    statsCache = null;
+    return json(JSON.stringify({ ok: true, scores: v.scores }), 201);
+  }
+
   if (path.startsWith("/api/")) return json('{"error":"not_found"}', 404);
   if (req.method !== "GET" && req.method !== "HEAD") return text("Method Not Allowed", 405, { Allow: "GET, HEAD" });
+
+  // Halaman aplikasi untuk membuat undangan, mengisi undangan, dan rekap pembuat.
+  if (path === "/undang" || /^\/i\/[a-z0-9]{8}$/.test(path) || /^\/r\/[a-z0-9]{8}$/.test(path)) {
+    const priv = path.startsWith("/r/");
+    return new Response(INDEX_HTML, { headers: {
+      "Content-Type": "text/html; charset=utf-8", "Cache-Control": priv ? "no-store" : "no-cache", ...SECURITY,
+      ...(priv ? { "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex" } : {}),
+    } });
+  }
 
   // /h/<kode>: halaman hasil yang dibagikan
   if (path.startsWith("/h/")) {

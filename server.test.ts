@@ -7,7 +7,9 @@ import { characterSVG } from "./public/character.js";
 
 const dbFile = join(tmpdir(), `gangsal-test-${Date.now()}.sqlite`);
 process.env.DB_PATH = dbFile;
-const { startServer, validate, sharePage, shareCode, makeLimiter } = await import("./server.ts");
+const { startServer, validate, sharePage, shareCode, makeLimiter, validateInvite, cleanupInvitesNow, RETENTION_MS, resetLimits } = await import("./server.ts");
+import * as ic from "./public/invite-crypto.js";
+import { Database } from "bun:sqlite";
 
 let server: ReturnType<typeof startServer>;
 let base = "";
@@ -128,7 +130,110 @@ describe("API", () => {
   });
 });
 
+describe("enkripsi undangan", () => {
+  test("nama hanya terbuka dengan kunci privat pembuat", async () => {
+    const k = await ic.newInviteKeys();
+    const box = await ic.sealName("Siti Rahayu", k.pub);
+    expect(JSON.stringify(box)).not.toContain("Siti");
+    expect(await ic.openName(box, k.priv)).toBe("Siti Rahayu");
+    const other = await ic.newInviteKeys();
+    await expect(ic.openName(box, other.priv)).rejects.toThrow();
+  });
+  test("judul terenkripsi dan format link rekap", async () => {
+    const k = await ic.newInviteKeys();
+    const t = await ic.encryptTitle("Rekrutmen Keuangan", k.titleKey);
+    expect(await ic.decryptTitle(t, k.titleKey)).toBe("Rekrutmen Keuangan");
+    expect(ic.parseAdminFragment("#" + ic.adminFragment(k))).toEqual({ adminToken: k.adminToken, titleKey: k.titleKey, priv: k.priv });
+    expect(ic.parseAdminFragment("#rusak")).toBeNull();
+  });
+});
+
+describe("API undangan", () => {
+  // IP berbeda tidak bisa dipalsukan di tes lokal, jadi tes ini memakai kiriman sesedikit mungkin.
+  let keys: any, code = "";
+  const mkInvite = async (extra: any = {}) => {
+    keys = await ic.newInviteKeys();
+    const body = { pub: keys.pub, adminHash: await ic.sha256Hex(keys.adminToken), title: await ic.encryptTitle("Tim IT", keys.titleKey), duration: "1h", maxParticipants: 2, ...extra };
+    return fetch(base + "/api/invites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  };
+  test("validasi input pembuatan undangan", async () => {
+    resetLimits();
+    const k = await ic.newInviteKeys();
+    const ok = { pub: k.pub, adminHash: "a".repeat(64), duration: "1d", maxParticipants: null, title: null };
+    expect(validateInvite(ok).ok).toBe(true);
+    expect(validateInvite({ ...ok, duration: "2h" }).ok).toBe(false);
+    expect(validateInvite({ ...ok, maxParticipants: 0 }).ok).toBe(false);
+    expect(validateInvite({ ...ok, pub: "x" }).ok).toBe(false);
+    expect(validateInvite({ ...ok, adminHash: "zz" }).ok).toBe(false);
+    expect(validateInvite({ ...ok, title: { iv: "a", ct: "b" } }).ok).toBe(false);
+  });
+  test("buat undangan, isi, lalu rekap hanya terbuka dengan token admin", async () => {
+    const r = await mkInvite();
+    expect(r.status).toBe(201);
+    ({ code } = await r.json());
+    expect(code).toMatch(/^[23456789abcdefghjkmnpqrstuvwxyz]{8}$/);
+
+    const pub = await (await fetch(`${base}/api/invites/${code}`)).json();
+    expect(pub.open).toBe(true);
+    expect(JSON.stringify(pub)).not.toContain("admin");
+
+    const totalBefore = (await (await fetch(base + "/api/stats")).json()).total;
+    const send = async (n: number, name: string) => fetch(`${base}/api/invites/${code}/results`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: cid(500 + n), answers: maxFor("C"), name: await ic.sealName(name, keys.pub) }) });
+    expect((await send(1, "Budi Santoso")).status).toBe(201);
+    expect((await send(1, "Budi Santoso")).status).toBe(409);           // perangkat sama, undangan sama
+    expect((await send(2, "Ani")).status).toBe(201);
+    expect((await send(3, "Citra")).status).toBe(409);                  // kuota 2 penuh
+    expect((await fetch(`${base}/api/invites/${code}/results`)).status).toBe(403);   // tanpa token
+    expect((await fetch(`${base}/api/invites/${code}/results`, { headers: { "X-Admin-Token": (await ic.newInviteKeys()).adminToken } })).status).toBe(403);
+    const res = await fetch(`${base}/api/invites/${code}/results`, { headers: { "X-Admin-Token": keys.adminToken } });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.rows.length).toBe(2);
+    expect(JSON.stringify(data)).not.toContain("Budi");
+    expect(await ic.openName(data.rows[0].name, keys.priv)).toBe("Budi Santoso");
+    expect(data.rows[0].scores.C).toBe(100);
+    expect(data.invite.full).toBe(true);
+    // skor anonim ikut rekap umum (tunggu cache stats 10 detik tidak perlu: cache dibuang saat ada kiriman)
+    expect((await (await fetch(base + "/api/stats")).json()).total).toBe(totalBefore + 2);
+  });
+  test("database tidak menyimpan nama dalam bentuk terbaca", () => {
+    const d = new Database(dbFile, { readonly: true });
+    const dump = JSON.stringify(d.query("SELECT * FROM invite_results").all()) + JSON.stringify(d.query("SELECT * FROM invites").all());
+    d.close();
+    expect(dump).not.toContain("Budi");
+    expect(dump).not.toContain("Tim IT");
+  });
+  test("hapus undangan butuh token, lalu kode tidak bisa dipakai", async () => {
+    expect((await fetch(`${base}/api/invites/${code}`, { method: "DELETE" })).status).toBe(403);
+    expect((await fetch(`${base}/api/invites/${code}`, { method: "DELETE", headers: { "X-Admin-Token": keys.adminToken } })).status).toBe(200);
+    expect((await fetch(`${base}/api/invites/${code}`)).status).toBe(404);
+  });
+  test("undangan kedaluwarsa menolak kiriman dan dibersihkan setelah 90 hari", async () => {
+    const r = await mkInvite({ maxParticipants: null });
+    const { code: c2, expiresAt } = await r.json();
+    const d = new Database(dbFile);
+    d.run("UPDATE invites SET expires_at = ? WHERE code = ?", [Date.now() - 1000, c2]);
+    d.close();
+    const res = await fetch(`${base}/api/invites/${c2}/results`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: cid(900), answers: maxFor("E"), name: await ic.sealName("X Y", keys.pub) }) });
+    expect(res.status).toBe(410);
+    expect((await (await fetch(`${base}/api/invites/${c2}`)).json()).open).toBe(false);
+    cleanupInvitesNow(Date.now() + RETENTION_MS + 5000);
+    expect((await fetch(`${base}/api/invites/${c2}`)).status).toBe(404);
+    expect(expiresAt).toBeGreaterThan(0);
+  });
+  test("halaman undangan dan rekap disajikan, rekap tidak di-cache", async () => {
+    expect((await fetch(base + "/undang")).status).toBe(200);
+    expect((await fetch(base + "/i/abcdefgh")).status).toBe(200);
+    const r = await fetch(base + "/r/abcdefgh");
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+});
+
 describe("keamanan", () => {
+  test("mulai dengan kuota bersih", () => { resetLimits(); });
   test("URL dengan encoding rusak tidak memicu error 500 atau halaman error Bun", async () => {
     for (const p of ["/%E0%A4%A", "/h/%E0%A4%A", "/%ZZ"]) {
       const r = await fetch(base + p, { redirect: "manual" });

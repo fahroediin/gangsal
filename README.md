@@ -11,6 +11,7 @@ A Big Five personality test in Indonesian. You answer 50 short statements and ge
 - **An animated character.** Drawn as SVG and generated from the five scores (see the table below). It also gets a name from the two strongest traits, such as "Si Perancang yang Kalem".
 - **Shareable results.** `/h/<code>` opens the result page for anyone. Link previews on WhatsApp, X and other platforms show a 1200x630 image of the character and the scores.
 - **Anonymous recap.** The server stores the raw answers without names or emails and shows averages and the spread of levels across all participants.
+- **Invitations for teams and HR.** Create an invitation at `/undang` without an account, share an 8-character code or link, and see every participant's name and scores on a private recap page. See [Invitations](#invitations).
 - **Built for readers aged 20 to 50.** Atkinson Hyperlegible for body text, large touch targets, light and dark themes, and layouts tested from 320px phones to 1440px desktops, including phones in landscape.
 
 ### How the character is built
@@ -24,6 +25,25 @@ A Big Five personality test in Indonesian. You answer 50 short statements and ge
 | Imagination | Zero to two antennae and twinkling stars |
 
 The body colour follows the most pronounced trait. Animation stops when the viewer has turned on reduced motion.
+
+## Invitations
+
+An organiser (for example an HR team) creates an invitation with an optional title, a time limit (1 hour, 1 day, 7 days or 30 days from creation) and an optional cap on participants. They receive two links:
+
+- **Participant link** `/i/<code>#<title-key>`. Participants can also type the 8-character code on the home page.
+- **Recap link** `/r/<code>#<admin-token>.<title-key>.<private-key>`. Only this link can read participant names.
+
+Participants give their name, agree to share it with the organiser, and take the test. Their anonymous scores also count toward the public recap. The recap page shows each name, the five scores, the character, average scores, a CSV download, and a button to delete the invitation.
+
+**Privacy design.** The operator of the server cannot read participant names, invitation titles, or tell who created an invitation:
+
+- The organiser's browser creates an ECDH P-256 key pair. Only the public key is sent to the server.
+- Each participant's browser encrypts their name with that public key (ephemeral ECDH, HKDF-SHA-256, AES-GCM). The server stores only ciphertext.
+- The title is encrypted with AES-GCM using a key that lives in the link fragment.
+- Everything after `#` stays in the browser and is never sent to the server. The server keeps only a SHA-256 hash of the admin token.
+- If the recap link is lost, the names cannot be recovered by anyone.
+
+Per-participant data is deleted automatically 90 days after an invitation's deadline. Use results as one input for a conversation, not as the only basis for hiring or appraisal decisions.
 
 ## The test items
 
@@ -78,6 +98,12 @@ The tests check the item keys against the IPIP source, the scoring, the characte
 | `GET /c/<code>.svg` | The animated character as a standalone SVG |
 | `POST /api/results` | Save answers: `{ "cid": "<uuid>", "answers": [50 integers from 1 to 5] }`. Scores are recalculated on the server. Limited to 20 requests per IP per hour. |
 | `GET /api/stats` | Participant count, average scores and level distribution |
+| `GET /undang`, `/i/<code>`, `/r/<code>` | Create an invitation, join one, and the organiser's recap |
+| `POST /api/invites` | Create an invitation: `{ pub, adminHash, title, duration, maxParticipants }`. Limited to 10 per IP per hour. |
+| `GET /api/invites/<code>` | Public invitation info: encrypted title, deadline, whether it is open |
+| `POST /api/invites/<code>/results` | Submit answers with an encrypted name. Rejected after the deadline (410), when full or already submitted from the same device (409). |
+| `GET /api/invites/<code>/results` | Encrypted names and scores. Requires the `X-Admin-Token` header. |
+| `DELETE /api/invites/<code>` | Delete the invitation and its per-participant data. Requires `X-Admin-Token`. |
 
 ## Deployment
 
