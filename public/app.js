@@ -1,4 +1,4 @@
-import { DIMS, ITEMS, SCALE, TEXT, score, level, encode, decode, persona } from "/core.js";
+import { DIMS, ITEMS, SCALE, TEXT, score, level, encode, decode, persona, basePersonas, OCEAN } from "/core.js";
 import { characterSVG } from "/character.js";
 import { newInviteKeys, sha256Hex, encryptTitle, decryptTitle, sealName, openName,
   participantFragment, adminFragment, parseAdminFragment } from "/invite-crypto.js";
@@ -107,6 +107,33 @@ function radar(s, label){
   </svg>`;
 }
 
+/* ---------- kartu karakter + OCEAN ---------- */
+function oceanHTML(s){
+  return `<dl class="ocean" aria-label="Profil OCEAN">${OCEAN.map(o=>{ const v = o.from(s); return `
+    <div title="${o.name} ${v}%"><dt style="color:var(--t-${DK[o.dim]})">${o.k}</dt><dd><span class="num">${v}%</span><i aria-hidden="true"><b style="width:${Math.max(v,3)}%;background:var(--d-${DK[o.dim]})"></b></i></dd></div>`; }).join("")}</dl>`;
+}
+const OCEAN_LEGEND = `<p class="ocean-legend">${OCEAN.map(o=>`<span><b>${o.k}</b> ${o.name}</span>`).join("")}</p>`;
+// thumbnail tanpa animasi: banyak kartu sekaligus tidak perlu bergerak
+function personaCard(p, meta = ""){
+  return `<li class="pcard">
+    <div class="pthumb">${characterSVG(p.avg, { animate:false })}</div>
+    <div class="pbody"><b class="pname">${esc(p.name)}</b>${meta}${oceanHTML(p.avg)}</div>
+  </li>`;
+}
+function groupByPersona(rows){
+  const m = new Map();
+  for (const r of rows){
+    const name = persona(r.scores);
+    const g = m.get(name) || { name, n: 0, sum: { E:0, A:0, C:0, S:0, I:0 }, members: [] };
+    g.n++; DIMS.forEach(d=>g.sum[d.key] += r.scores[d.key]);
+    if (r.name) g.members.push(r.name);
+    m.set(name, g);
+  }
+  return [...m.values()].map(g=>({ name: g.name, n: g.n, members: g.members,
+    avg: Object.fromEntries(DIMS.map(d=>[d.key, Math.round(g.sum[d.key]/g.n)])) }))
+    .sort((a,b)=>b.n - a.n || a.name.localeCompare(b.name));
+}
+
 /* ---------- beranda ---------- */
 function viewIntro(){
   setNav("test"); setTitle("");
@@ -127,6 +154,15 @@ function viewIntro(){
   </section>
   <section class="dims" aria-label="Lima dimensi yang diukur">
     ${DIMS.map(d=>`<div><i style="background:var(--d-${DK[d.key]})"></i><b>${d.name}</b><span>${d.about}</span></div>`).join("")}
+  </section>
+  <section class="catalog" aria-labelledby="catTitle">
+    <div class="catalog-head">
+      <h2 id="catTitle">Karakter yang bisa kamu dapat</h2>
+      <p class="lede">Nama karaktermu berasal dari sifat yang paling menonjol. Bila ada sifat kedua yang juga menonjol, namanya digabung, misalnya <i>Si Perancang yang Hangat</i>. Ini sebelas karakter dasarnya.</p>
+      ${OCEAN_LEGEND}
+    </div>
+    <ul class="plist collapsed" id="catList">${basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`)).join("")}</ul>
+    <div><button class="btn" type="button" id="catMore" aria-controls="catList" aria-expanded="false">Lihat ${basePersonas().length - 6} karakter lainnya</button></div>
   </section>
   <section class="teams" aria-labelledby="teamsTitle">
     <div class="teams-copy">
@@ -150,6 +186,12 @@ function viewIntro(){
     </form>
   </section>`;
   $("#toInvite").onclick = ()=>nav("/undang");
+  $("#catMore").onclick = ()=>{
+    const list = $("#catList"), open = list.classList.toggle("collapsed") === false;
+    $("#catMore").setAttribute("aria-expanded", String(open));
+    $("#catMore").textContent = open ? "Tampilkan lebih sedikit" : `Lihat ${basePersonas().length - 6} karakter lainnya`;
+    if (!open) $("#catTitle").scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" });
+  };
   if ($("#toTeams")) $("#toTeams").onclick = ()=>{ $(".teams").scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block:"start"}); $("#teamsTitle").setAttribute("tabindex","-1"); $("#teamsTitle").focus({preventScroll:true}); };
   $("#joinForm").onsubmit = e=>{
     e.preventDefault();
@@ -446,7 +488,15 @@ function viewRecap(){
           <div class="lv-legend" style="margin-top:16px">${LV.map(([l,bg])=>`<span><i style="background:${bg};border:1px solid var(--line)"></i>${l[0].toUpperCase()+l.slice(1)} (${l==="rendah"?"0-34":l==="sedang"?"35-65":"66-100"})</span>`).join("")}</div>
           <p class="note">Satu hasil per perangkat. Tes ulang dari perangkat yang sama menimpa hasil lama.</p>
         </div>
-      </section>`;
+      </section>
+      ${(recap.personas || []).length ? `<section class="catalog" aria-labelledby="pTitle">
+        <div class="catalog-head">
+          <h2 id="pTitle">Karakter para peserta</h2>
+          <p class="lede">${recap.personas.length} karakter berbeda dari ${n} peserta, diurutkan dari yang paling banyak. Persentase OCEAN adalah rata-rata peserta di karakter itu.</p>
+          ${OCEAN_LEGEND}
+        </div>
+        <ul class="plist">${recap.personas.map(p=>personaCard(p, `<span class="pmeta"><b class="num">${p.n}</b> peserta, ${Math.round(p.n/n*100)}%</span>`)).join("")}</ul>
+      </section>` : ""}`;
   }
   $("#view").innerHTML = `
     ${recap && recap.total ? "" : `<h1 style="margin-bottom:24px">Rekap peserta</h1>`}
@@ -786,6 +836,14 @@ async function viewInviteRecap(code, opts = {}){
   ${n ? `<section class="profile inv-avg">
     <div><h2 style="margin-bottom:12px">Rata-rata ${n} peserta</h2>${radar(avg, "Rata-rata peserta undangan")}</div>
     <div class="result-copy" style="align-self:center"><div class="stage">${characterSVG(avg, {title:"Karakter rata-rata"})}</div><p class="lede" style="text-align:center">${persona(avg)}</p></div>
+  </section>
+  <section class="catalog" aria-labelledby="ipTitle">
+    <div class="catalog-head">
+      <h2 id="ipTitle">Karakter peserta undangan ini</h2>
+      ${OCEAN_LEGEND}
+    </div>
+    <ul class="plist">${groupByPersona(rows).map(p=>personaCard(p,
+      `<span class="pmeta"><b class="num">${p.n}</b> peserta, ${Math.round(p.n/n*100)}%</span>${p.members.length ? `<span class="pmembers">${p.members.map(esc).join(", ")}</span>` : ""}`)).join("")}</ul>
   </section>` : ""}
   <section class="danger">
     <h2>Hapus undangan</h2>

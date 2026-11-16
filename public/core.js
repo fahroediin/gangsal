@@ -106,7 +106,7 @@ export function decode(code) {
 }
 
 // Nama karakter dari dua sifat paling menonjol (jarak terjauh dari 50).
-const NOUN = {
+export const NOUN = {
   E: ["Si Pengamat", "Si Penggembira"],
   A: ["Si Pemberi Kritik", "Si Penyayang"],
   C: ["Si Petualang Bebas", "Si Perancang"],
@@ -120,6 +120,27 @@ const ADJ = {
   S: ["yang Peka", "yang Tenang"],
   I: ["yang Membumi", "yang Imajinatif"]
 };
+/** 11 karakter dasar: Si Penyeimbang + ujung tinggi/rendah tiap dimensi (dimensi lain 50). */
+export function basePersonas() {
+  const mid = { E: 50, A: 50, C: 50, S: 50, I: 50 };
+  return [
+    { name: "Si Penyeimbang", avg: { ...mid }, trait: "Kelima sisi di tengah" },
+    ...DIMS.flatMap(d => [1, 0].map(hi => ({
+      name: NOUN[d.key][hi], avg: { ...mid, [d.key]: hi ? 90 : 10 },
+      trait: `${d.name} ${hi ? "tinggi" : "rendah"}`,
+    }))),
+  ];
+}
+
+/** Skor dalam urutan OCEAN baku. N (Neurotisisme) = 100 - Stabilitas Emosi. */
+export const OCEAN = [
+  { k: "O", name: "Keterbukaan", dim: "I", from: s => s.I },
+  { k: "C", name: "Kehati-hatian", dim: "C", from: s => s.C },
+  { k: "E", name: "Ekstraversi", dim: "E", from: s => s.E },
+  { k: "A", name: "Keramahan", dim: "A", from: s => s.A },
+  { k: "N", name: "Neurotisisme", dim: "S", from: s => 100 - s.S },
+];
+
 export function persona(s) {
   const ranked = ORDER.map(k => ({ k, d: Math.abs(s[k] - 50), hi: s[k] >= 50 ? 1 : 0 })).sort((a, b) => b.d - a.d);
   if (ranked[0].d < 12) return "Si Penyeimbang";

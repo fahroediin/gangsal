@@ -199,7 +199,19 @@ function stats(): string {
     levels[d.key] = { rendah: 0, sedang: 0, tinggi: 0 };
     for (const v of vals) levels[d.key][level(v)]++;
   }
-  const body = JSON.stringify({ total: rows.length, avg, levels });
+  // Kelompok per karakter (persona): jumlah peserta dan rata-rata skor tiap kelompok.
+  const groups = new Map<string, { n: number; sum: Record<string, number> }>();
+  for (const r of rows) {
+    const s = { E: r.e, A: r.a, C: r.c, S: r.s, I: r.i };
+    const name = persona(s);
+    const g = groups.get(name) ?? { n: 0, sum: { E: 0, A: 0, C: 0, S: 0, I: 0 } };
+    g.n++; for (const k of Object.keys(s)) g.sum[k] += (s as any)[k];
+    groups.set(name, g);
+  }
+  const personas = [...groups].map(([name, g]) => ({
+    name, n: g.n, avg: Object.fromEntries(Object.entries(g.sum).map(([k, v]) => [k, Math.round(v / g.n)])),
+  })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  const body = JSON.stringify({ total: rows.length, avg, levels, personas });
   statsCache = { at: Date.now(), body };
   return body;
 }

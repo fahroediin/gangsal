@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ITEMS, DIMS, score, level, encode, decode, persona } from "./public/core.js";
+import { ITEMS, DIMS, score, level, encode, decode, persona, basePersonas, OCEAN } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 
 const dbFile = join(tmpdir(), `gangsal-test-${Date.now()}.sqlite`);
@@ -51,6 +51,17 @@ describe("skoring", () => {
     expect(persona({ E: 50, A: 52, C: 48, S: 55, I: 45 })).toBe("Si Penyeimbang");
     expect(persona({ E: 95, A: 50, C: 50, S: 50, I: 20 })).toBe("Si Penggembira yang Membumi");
   });
+  test("katalog 11 karakter dasar konsisten dengan nama persona", () => {
+    const list = basePersonas();
+    expect(list.length).toBe(11);
+    expect(new Set(list.map((p) => p.name)).size).toBe(11);
+    for (const p of list) expect(persona(p.avg)).toBe(p.name);
+  });
+  test("OCEAN memakai urutan baku dan N = 100 - Stabilitas", () => {
+    expect(OCEAN.map((o) => o.k).join("")).toBe("OCEAN");
+    const s = { E: 43, A: 40, C: 38, S: 80, I: 32 };
+    expect(OCEAN.map((o) => o.from(s))).toEqual([32, 38, 43, 40, 20]);
+  });
   test("karakter berubah sesuai skor", () => {
     const hiI = characterSVG({ E: 50, A: 50, C: 50, S: 50, I: 95 });
     const loI = characterSVG({ E: 50, A: 50, C: 50, S: 50, I: 5 });
@@ -89,6 +100,10 @@ describe("API", () => {
     expect(r.total).toBe(2);
     expect(r.avg).toEqual({ E: 50, A: 75, C: 50, S: 50, I: 50 });
     expect(r.levels.A).toEqual({ rendah: 0, sedang: 1, tinggi: 1 });
+    // dikelompokkan per karakter
+    expect(r.personas.reduce((t: number, p: any) => t + p.n, 0)).toBe(2);
+    expect(r.personas.map((p: any) => p.name).sort()).toEqual([persona({ E: 50, A: 100, C: 50, S: 50, I: 50 }), "Si Penyeimbang"].sort());
+    expect(r.personas.find((p: any) => p.name === "Si Penyeimbang").avg).toEqual({ E: 50, A: 50, C: 50, S: 50, I: 50 });
   });
   test("tolak body rusak dan metode salah", async () => {
     expect((await fetch(base + "/api/results", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" })).status).toBe(400);

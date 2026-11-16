@@ -202,6 +202,30 @@ main:focus{outline:none}
 .lv-legend i{width:16px;height:16px;border-radius:4px;display:inline-block}
 .empty{padding:32px 24px;text-align:center;color:var(--muted);border:2px dashed var(--line);border-radius:18px;font-size:1.05rem}
 
+/* daftar karakter + OCEAN */
+.catalog{margin-top:clamp(40px,7vw,80px);display:flex;flex-direction:column;gap:20px}
+.catalog-head{display:flex;flex-direction:column;gap:10px;max-width:46rem}
+.ocean-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.95rem;color:var(--muted);margin:0}
+.ocean-legend b{color:var(--ink)}
+.plist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
+.plist.collapsed .pcard:nth-child(n+7){display:none}
+.pcard{display:grid;grid-template-columns:84px minmax(0,1fr);gap:14px;align-items:start;padding:14px;border:2px solid var(--line);border-radius:18px;background:var(--surface)}
+.pthumb{background:var(--stage);border-radius:14px;aspect-ratio:240/260;overflow:hidden}
+.pthumb svg{display:block;width:100%;height:100%}
+.pbody{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pname{font-family:var(--f-display);font-size:1.12rem;line-height:1.2;overflow-wrap:anywhere}
+.pmeta{font-size:.95rem;color:var(--muted)}
+.pmeta b{color:var(--ink)}
+.pmembers{font-size:.95rem;overflow-wrap:anywhere}
+.ocean{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:4px 0 0}
+.ocean div{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.ocean dt{font-weight:700;font-size:1rem;line-height:1}
+.ocean dd{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%}
+.ocean dd span{font-size:.88rem;font-weight:700}
+.ocean dd i{display:block;width:100%;height:6px;border-radius:3px;background:var(--soft);overflow:hidden}
+.ocean dd i b{display:block;height:100%;border-radius:3px}
+@media (max-width:360px){.pcard{grid-template-columns:64px minmax(0,1fr);gap:10px;padding:12px}.ocean dd span{font-size:.8rem}}
+
 /* beranda: blok untuk tim */
 .teams{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px clamp(24px,5vw,56px);margin-top:clamp(40px,7vw,80px);
   padding:clamp(22px,4vw,40px);border-radius:24px;background:var(--surface);border:2px solid var(--line)}
