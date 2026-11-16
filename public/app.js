@@ -176,12 +176,12 @@ function viewTest(){
   $("#view").innerHTML = `
   <section class="quiz">
     <div class="quiz-top">
-      ${mode ? `<p class="quiz-invite">Undangan${mode.title ? `: <b>${esc(mode.title)}</b>` : ""}, atas nama <b>${esc(mode.name)}</b></p>` : ""}
+      ${mode ? `<p class="quiz-invite" title="${esc(`${mode.title ? mode.title+", " : ""}atas nama ${mode.name}`)}">${mode.title ? `<b>${esc(mode.title)}</b>, ` : "Undangan, "}atas nama <b>${esc(mode.name)}</b></p>` : ""}
       <div class="quiz-meta"><span>Pernyataan <b class="num">${qi+1}</b> dari ${TOTAL}</span><span class="saved num">${done} terjawab</span></div>
       <div class="track" role="progressbar" aria-label="Kemajuan tes" aria-valuemin="0" aria-valuemax="${TOTAL}" aria-valuenow="${done}"><i style="width:${done/TOTAL*100}%"></i></div>
     </div>
     <div>
-      <p class="ask">${qi===0 ? "Gambarkan dirimu seperti biasanya sekarang, bukan seperti yang kamu inginkan. Seberapa sesuai pernyataan ini?" : "Seberapa sesuai pernyataan ini dengan dirimu?"}</p>
+      <p class="ask${qi===0 ? "" : " repeat"}">${qi===0 ? "Gambarkan dirimu seperti biasanya sekarang, bukan seperti yang kamu inginkan. Seberapa sesuai pernyataan ini?" : "Seberapa sesuai pernyataan ini dengan dirimu?"}</p>
       <p class="statement" id="statement" tabindex="-1">${esc(text)}</p>
     </div>
     <div class="answers" role="radiogroup" aria-labelledby="statement">
@@ -455,6 +455,50 @@ function viewRecap(){
   if ($("#refresh")) $("#refresh").onclick = ()=>{ recap = null; viewRecap(); };
 }
 
+/* ---------- undangan: daftar milik perangkat ini ---------- */
+// Link rekap berisi kunci rahasia; disimpan HANYA di browser pembuat supaya tidak hilang saat halaman ditinggal.
+const MY_INV_KEY = "gangsal-my-invites";
+function myInvites(){
+  try { const l = JSON.parse(lsGet(MY_INV_KEY)||"[]"); return Array.isArray(l) ? l.filter(x=>x && /^[a-z0-9]{8}$/.test(x.code) && typeof x.admin==="string") : []; }
+  catch(e){ return []; }
+}
+function rememberInvite(entry){
+  const l = myInvites().filter(x=>x.code !== entry.code);
+  l.unshift({ ...(myInvites().find(x=>x.code===entry.code) || {}), ...entry });
+  lsSet(MY_INV_KEY, JSON.stringify(l.slice(0, 50)));
+}
+function forgetInvite(code){ lsSet(MY_INV_KEY, JSON.stringify(myInvites().filter(x=>x.code !== code))); }
+const recapUrl = x => `${location.origin}/r/${x.code}#${x.admin}`;
+const joinUrl = x => `${location.origin}/i/${x.code}#${x.tkey}`;
+function myInvitesHTML(){
+  const l = myInvites();
+  if (!l.length) return "";
+  const now = Date.now();
+  return `<section class="my-inv" aria-labelledby="myInvTitle">
+    <h2 id="myInvTitle">Undangan yang kamu buat di perangkat ini</h2>
+    <p class="hint">Disimpan hanya di browser ini. Simpan juga link rekap di tempat lain bila ingin membukanya dari perangkat lain.</p>
+    <ul class="inv-list">${l.map(x=>`<li>
+      <div class="inv-item-main"><b>${x.title ? esc(x.title) : "Undangan tanpa judul"}</b>
+        <span class="muted">Kode ${x.code} &middot; ${x.expiresAt ? (x.expiresAt > now ? `terbuka sampai ${fmtTime(x.expiresAt)}` : `ditutup ${fmtTime(x.expiresAt)}`) : ""}</span></div>
+      <div class="row">
+        <a class="btn primary" href="/r/${x.code}#${esc(x.admin)}">Buka rekap</a>
+        ${x.tkey ? `<button class="btn" type="button" data-copy="${x.code}">Salin link peserta</button>` : ""}
+        <button class="btn link" type="button" data-forget="${x.code}">Hapus dari daftar</button>
+      </div></li>`).join("")}</ul>
+  </section>`;
+}
+function bindMyInvites(){
+  document.querySelectorAll("[data-copy]").forEach(b=>{ const x = myInvites().find(i=>i.code===b.dataset.copy); if (x) copyBtn(b, joinUrl(x), "Tersalin"); });
+  document.querySelectorAll("[data-forget]").forEach(b=>b.onclick = ()=>{
+    const code = b.dataset.forget;
+    const li = b.closest("li");
+    li.innerHTML = `<p>Hapus <b>${code}</b> dari daftar perangkat ini? Undangan dan datanya tetap ada di server, tapi tanpa link rekap kamu tidak bisa membukanya lagi.</p>
+      <div class="row"><button class="btn danger-btn" type="button" data-yes>Hapus dari daftar</button><button class="btn link" type="button" data-no>Batal</button></div>`;
+    li.querySelector("[data-no]").onclick = ()=>viewInviteCreate();
+    li.querySelector("[data-yes]").onclick = ()=>{ forgetInvite(code); viewInviteCreate(); };
+  });
+}
+
 /* ---------- undangan: buat ---------- */
 const DURATION_OPTS = [["1h","1 jam"],["1d","1 hari"],["7d","7 hari"],["30d","30 hari"]];
 function copyBtn(btn, value, okText){
@@ -492,7 +536,9 @@ function viewInviteCreate(){
       <div class="row"><button class="btn primary" id="invSubmit" type="submit">Buat undangan</button></div>
       <p class="status warn" id="invStatus" role="alert" hidden></p>
     </form>
+    ${myInvitesHTML()}
   </section>`;
+  bindMyInvites();
   const max = $("#invMax"), maxErr = $("#invMaxErr");
   const checkMax = ()=>{
     const v = max.value.trim();
@@ -530,6 +576,7 @@ function viewInviteCreate(){
 function viewInviteCreated({ code, expiresAt, title, keys, max }){
   const pLink = `${location.origin}/i/${code}#${participantFragment(keys)}`;
   const aLink = `${location.origin}/r/${code}#${adminFragment(keys)}`;
+  rememberInvite({ code, title, expiresAt, admin: adminFragment(keys), tkey: participantFragment(keys) });
   history.replaceState(null, "", "/undang");
   $("#view").innerHTML = `
   <section class="form-page">
@@ -543,7 +590,7 @@ function viewInviteCreated({ code, expiresAt, title, keys, max }){
     </div>
     <div class="secret">
       <h2>Link rekap, khusus untukmu</h2>
-      <p>Hanya link ini yang bisa membuka nama peserta. Simpan sekarang. <b>Kalau link ini hilang, rekap tidak bisa dibuka lagi oleh siapa pun, termasuk kami.</b> Jangan bagikan ke peserta.</p>
+      <p>Hanya link ini yang bisa membuka nama peserta. Link sudah tersimpan di browser ini (lihat menu <b>Undang</b>), tapi simpan juga salinannya. <b>Kalau browser ini dibersihkan dan salinannya tidak ada, rekap tidak bisa dibuka lagi oleh siapa pun, termasuk kami.</b> Jangan bagikan ke peserta.</p>
       <div class="copyrow"><input id="aLink" readonly value="${esc(aLink)}"><button class="btn" type="button" id="cpA">Salin</button></div>
       <div class="row">
         <button class="btn" type="button" id="dlA">Unduh sebagai file</button>
@@ -642,28 +689,37 @@ async function viewInviteJoin(code){
 }
 
 /* ---------- undangan: rekap pembuat ---------- */
+// label pendek untuk kartu peserta di layar sempit (nama lengkap tetap di tabel desktop dan atribut title)
+const CARD_LABEL = { E:"Ekstra", A:"Ramah", C:"Hati-hati", S:"Stabil", I:"Imaji" };
 function csvCell(v){ const s = String(v); return /[",\n;]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; }
-async function viewInviteRecap(code){
+let recapTimer = null;
+let recapSort = { code: null, key: "at", dir: 1 };
+async function viewInviteRecap(code, opts = {}){
+  clearInterval(recapTimer);
   setNav("invite"); setTitle("Rekap undangan"); quizActive = false;
   const keys = parseAdminFragment(location.hash);
   if (!keys){
     $("#view").innerHTML = `<section class="form-page"><h1>Link rekap tidak lengkap</h1><p class="lede">Buka link rekap lengkap yang kamu terima saat membuat undangan, termasuk bagian setelah tanda #. Tanpa bagian itu, nama peserta tidak bisa dibuka.</p></section>`;
     return;
   }
-  $("#view").innerHTML = `<section class="form-page"><p class="lede">Memuat rekap...</p></section>`;
+  const keepY = opts.silent ? scrollY : 0;
+  if (!opts.silent) $("#view").innerHTML = `<section class="form-page"><p class="lede">Memuat rekap...</p></section>`;
   let data;
   try{
-    const res = await fetch(`/api/invites/${code}/results`, { headers: { "X-Admin-Token": keys.adminToken } });
+    const res = await fetch(`/api/invites/${code}/results`, { headers: { "X-Admin-Token": keys.adminToken }, cache: "no-store" });
     if (res.status === 404){ $("#view").innerHTML = `<section class="form-page"><h1>Undangan tidak ditemukan</h1><p class="lede">Undangan ini sudah dihapus, atau sudah lewat 90 hari setelah batas waktunya sehingga datanya dihapus otomatis.</p></section>`; return; }
     if (res.status === 403){ $("#view").innerHTML = `<section class="form-page"><h1>Link rekap tidak cocok</h1><p class="lede">Link ini bukan link rekap untuk undangan ${esc(code)}. Periksa apakah link tersalin utuh.</p></section>`; return; }
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
   }catch(e){
+    if (opts.silent){ const s = document.querySelector(".refresh-row .hint"); if (s) s.textContent = "Gagal memperbarui. Periksa koneksi; data di bawah adalah data terakhir."; return; }
     $("#view").innerHTML = `<section class="form-page"><h1>Rekap belum bisa dimuat</h1><p class="lede">Periksa koneksi internet, lalu muat ulang halaman ini.</p></section>`;
     return;
   }
   let title = null;
   if (data.invite.title){ try{ title = await decryptTitle(data.invite.title, keys.titleKey); }catch(e){} }
+  // ingat undangan ini di perangkat pembuat (misalnya bila link dibuka dari file atau pesan)
+  rememberInvite({ code, title, expiresAt: data.invite.expiresAt, admin: location.hash.slice(1), tkey: keys.titleKey });
   const rows = [];
   for (const r of data.rows){
     let name; try{ name = await openName(r.name, keys.priv); }catch(e){ name = null; }
@@ -671,7 +727,8 @@ async function viewInviteRecap(code){
   }
   const inv = data.invite, now = Date.now(), n = rows.length;
   const avg = {}; DIMS.forEach(d=>avg[d.key] = n ? Math.round(rows.reduce((t,r)=>t+r.scores[d.key],0)/n) : 50);
-  let sortKey = "at", sortDir = 1;
+  if (recapSort.code !== code) recapSort = { code, key: "at", dir: 1 };
+  let sortKey = recapSort.key, sortDir = recapSort.dir;
   const pLink = `${location.origin}/i/${code}#${keys.titleKey}`;
   const render = ()=>{
     const sorted = rows.slice().sort((a,b)=>{
@@ -684,11 +741,12 @@ async function viewInviteRecap(code){
       <thead><tr>${th("name","Nama")}${DIMS.map(d=>th(d.key, d.short)).join("")}<th scope="col">Karakter</th>${th("at","Waktu")}</tr></thead>
       <tbody>${sorted.map(r=>`<tr>
         <th scope="row">${r.name===null ? `<span class="muted">Nama tidak terbaca</span>` : esc(r.name)}</th>
-        ${DIMS.map(d=>{ const v = r.scores[d.key]; return `<td class="num"><span class="cell-score lv-${level(v)}">${v}</span></td>`; }).join("")}
-        <td><a href="/h/${encode(r.scores)}" target="_blank" rel="noopener">${esc(r.persona)}</a></td>
-        <td class="num muted">${fmtTime(r.at)}</td></tr>`).join("")}</tbody></table>`
+        ${DIMS.map(d=>{ const v = r.scores[d.key]; return `<td class="num sc" data-label="${CARD_LABEL[d.key]}" title="${d.name} ${v}"><span class="cell-score lv-${level(v)}">${v}</span></td>`; }).join("")}
+        <td class="persona" data-label="Karakter"><a href="/h/${encode(r.scores)}" target="_blank" rel="noopener">${esc(r.persona)}</a></td>
+        <td class="num muted when" data-label="Waktu">${fmtTime(r.at)}</td></tr>`).join("")}</tbody></table>`
       : `<div class="empty">Belum ada peserta yang mengirim hasil. Bagikan link peserta di atas.</div>`;
-    document.querySelectorAll(".sort").forEach(b=>b.onclick = ()=>{ const k = b.dataset.k; sortDir = sortKey===k ? -sortDir : (k==="name"||k==="at" ? 1 : -1); sortKey = k; render(); });
+    document.querySelectorAll(".sort").forEach(b=>b.onclick = ()=>{ const k = b.dataset.k; sortDir = sortKey===k ? -sortDir : (k==="name"||k==="at" ? 1 : -1); sortKey = k; recapSort = { code, key: sortKey, dir: sortDir }; render(); });
+    if ($("#sortSel")) $("#sortSel").value = ["name","at",...DIMS.map(d=>d.key)].includes(sortKey) ? sortKey : "at";
   };
   $("#view").innerHTML = `
   <section class="recap-inv">
@@ -699,24 +757,39 @@ async function viewInviteRecap(code){
       <span>${inv.open ? `Sampai ${fmtTime(inv.expiresAt)}, ${fmtLeft(inv.expiresAt-now)}` : `Ditutup ${inv.full ? "karena kuota penuh" : fmtTime(inv.expiresAt)}`}</span>
       <span><b class="num">${n}</b>${inv.maxParticipants ? ` dari ${inv.maxParticipants}` : ""} peserta</span>
     </div>
+    <div class="row refresh-row">
+      <button class="btn" type="button" id="reloadRecap">Muat ulang</button>
+      <span class="hint" role="status">Diperbarui pukul ${new Date().toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}${inv.open ? ". Halaman ini memperbarui diri setiap 30 detik." : "."}</span>
+    </div>
     ${inv.open ? `<div class="field" style="margin-top:20px"><label for="pLink2">Link untuk peserta</label><div class="copyrow"><input id="pLink2" readonly value="${esc(pLink)}"><button class="btn" type="button" id="cpP2">Salin</button></div></div>` : ""}
     <p class="hint" style="margin-top:12px">Simpan halaman ini di bookmark. Data dihapus otomatis pada ${fmtTime(inv.expiresAt + 90*86400000)}.</p>
   </section>
-  ${n ? `<section class="profile">
-    <div><h2 style="margin-bottom:12px">Rata-rata ${n} peserta</h2>${radar(avg, "Rata-rata peserta undangan")}</div>
-    <div class="result-copy" style="align-self:center"><div class="stage" style="max-width:240px">${characterSVG(avg, {title:"Karakter rata-rata"})}</div><p class="lede" style="text-align:center">${persona(avg)}</p></div>
-  </section>` : ""}
   <section class="recap-table">
     <div class="row" style="justify-content:space-between;margin-bottom:12px"><h2>Peserta</h2>${n ? `<button class="btn" type="button" id="csv">Unduh CSV</button>` : ""}</div>
+    ${n > 1 ? `<div class="sort-mobile"><label for="sortSel">Urutkan</label><select id="sortSel">
+      <option value="at">Waktu mengisi</option><option value="name">Nama</option>
+      ${DIMS.map(d=>`<option value="${d.key}">${d.name} tertinggi</option>`).join("")}</select></div>` : ""}
     <div class="table-scroll" id="tableWrap"></div>
     <p class="note">Rendah 0-34, sedang 35-65, tinggi 66-100. Skor dihitung dari jawaban peserta sendiri, bukan perbandingan dengan populasi. Gunakan sebagai bahan percakapan, bukan satu-satunya dasar keputusan.</p>
   </section>
+  ${n ? `<section class="profile inv-avg">
+    <div><h2 style="margin-bottom:12px">Rata-rata ${n} peserta</h2>${radar(avg, "Rata-rata peserta undangan")}</div>
+    <div class="result-copy" style="align-self:center"><div class="stage">${characterSVG(avg, {title:"Karakter rata-rata"})}</div><p class="lede" style="text-align:center">${persona(avg)}</p></div>
+  </section>` : ""}
   <section class="danger">
     <h2>Hapus undangan</h2>
     <p>Menghapus kode, semua nama, dan hasil per peserta untuk undangan ini secara permanen. Skor anonim di rekap umum tidak ikut terhapus.</p>
     <div id="delArea"><button class="btn danger-btn" type="button" id="delStart">Hapus undangan ini</button></div>
   </section>`;
   render();
+  if (opts.silent) scrollTo(0, keepY);
+  $("#reloadRecap").onclick = ()=>viewInviteRecap(code, { silent: true });
+  if (inv.open) recapTimer = setInterval(()=>{
+    if (location.pathname !== `/r/${code}`){ clearInterval(recapTimer); return; }
+    if (document.hidden || $("#delConfirm") || document.activeElement?.id === "sortSel") return;
+    viewInviteRecap(code, { silent: true });
+  }, 30_000);
+  if ($("#sortSel")) $("#sortSel").onchange = e=>{ sortKey = e.target.value; sortDir = (sortKey==="name"||sortKey==="at") ? 1 : -1; recapSort = { code, key: sortKey, dir: sortDir }; render(); };
   if ($("#cpP2")) copyBtn($("#cpP2"), pLink, "Tersalin");
   if ($("#csv")) $("#csv").onclick = ()=>{
     const head = ["Nama", ...DIMS.map(d=>d.name), "Karakter", "Waktu"];
@@ -736,6 +809,8 @@ async function viewInviteRecap(code){
       try{
         const res = await fetch(`/api/invites/${code}`, { method:"DELETE", headers: { "X-Admin-Token": keys.adminToken } });
         if (!res.ok) throw new Error();
+        clearInterval(recapTimer);
+        forgetInvite(code);
         $("#view").innerHTML = `<section class="form-page"><h1>Undangan ${esc(code)} sudah dihapus</h1><p class="lede">Kode tidak bisa dipakai lagi dan semua nama serta hasil per peserta sudah dihapus.</p><div class="row"><button class="btn primary" id="newInv" type="button">Buat undangan baru</button></div></section>`;
         $("#newInv").onclick = ()=>nav("/undang");
       }catch(e){ const s = $("#delSt"); s.hidden = false; s.textContent = "Undangan gagal dihapus. Periksa koneksi lalu coba lagi."; }

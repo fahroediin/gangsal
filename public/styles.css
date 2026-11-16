@@ -135,7 +135,7 @@ main:focus{outline:none}
 .keys-hint{font-size:.95rem;color:var(--muted)}
 @media (hover:none){.keys-hint{display:none}.ans .key{display:none}}
 /* layar tes harus muat tanpa gulir di ponsel umum (tinggi 640-800px) */
-@media (max-height:820px){
+@media (max-height:880px){
   .quiz{gap:16px}
   .statement{font-size:clamp(1.5rem,5vw,2.1rem);min-height:0}
   .ans{min-height:54px;padding:8px 16px;font-size:1.05rem}
@@ -268,6 +268,42 @@ input[aria-invalid="true"]{border-color:var(--warn)}
 .cell-score.lv-rendah{background:var(--soft);color:var(--muted)}
 .cell-score.lv-sedang{background:var(--line);color:var(--ink)}
 .cell-score.lv-tinggi{background:var(--ink);color:var(--primary-ink)}
+.rtable thead th{white-space:normal}
+.rtable td.when{white-space:nowrap;font-size:.92rem}
+.rtable{min-width:0}
+.sort-mobile{display:none;align-items:center;gap:10px;margin-bottom:12px}
+.sort-mobile label{font-weight:700}
+.sort-mobile select{font:inherit;min-height:48px;padding:0 12px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);flex:1;min-width:0}
+/* layar sempit: tabel menjadi kartu per peserta */
+@media (max-width:760px){
+  .sort-mobile{display:flex}
+  .table-scroll{border:0;background:none;overflow:visible}
+  .rtable,.rtable tbody{display:block;min-width:0}
+  .rtable thead{display:none}
+  .rtable tr{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 6px;padding:16px;margin-bottom:12px;border:2px solid var(--line);border-radius:16px;background:var(--surface)}
+  .rtable tbody th{grid-column:1/-1;padding:0;border:0;font-size:1.1rem;overflow-wrap:anywhere}
+  .rtable td{padding:0;border:0}
+  .rtable td.sc{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+  .rtable td.sc::before{content:attr(data-label);font-size:.8rem;color:var(--muted);line-height:1.2;overflow-wrap:normal;word-break:normal;hyphens:manual}
+  .rtable td.sc .cell-score{min-width:0;width:100%}
+  .rtable td.persona{grid-column:1/-1}
+  .rtable td.when{grid-column:1/-1;font-size:.92rem}
+}
+@media (max-width:360px){.rtable td.sc::before{font-size:.74rem}.rtable tr{padding:14px 12px;gap:8px 4px}}
+.my-inv{margin-top:28px;padding-top:24px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.my-inv h2{font-size:1.3rem}
+.inv-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.inv-list li{border:2px solid var(--line);border-radius:16px;background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.inv-item-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.inv-item-main b{font-size:1.1rem;overflow-wrap:anywhere}
+.refresh-row{gap:8px 14px}
+.refresh-row .btn{min-height:46px}
+.inv-avg .stage{max-width:220px}
+@media (max-width:760px){.inv-avg .stage{max-width:180px}}
+.quiz-invite{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.95rem}
+/* layar pendek: sembunyikan petunjuk yang berulang di setiap pernyataan */
+@media (max-height:700px){.ask.repeat{display:none}}
+@media (max-height:500px) and (min-width:600px){.quiz-invite{display:none}.ask.repeat{display:none}}
 .danger{margin-top:clamp(40px,7vw,64px);padding-top:24px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px;max-width:44rem}
 .danger h2{font-size:1.25rem}
 .danger p{color:var(--muted)}
