@@ -81,7 +81,7 @@ The tests check the item keys against the IPIP source, the scoring, the characte
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) (in Indonesian) for running it with PM2 and nginx. The server needs a font such as DejaVu Sans installed so the text in preview images renders.
+See [DEPLOY.md](DEPLOY.md) (in Indonesian) for running it with PM2 and nginx. The server needs Liberation Sans (or Arial) installed so the text in preview images renders.
 
 ## Project layout
 

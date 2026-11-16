@@ -12,8 +12,8 @@ sudo mkdir -p /opt/gangsal && sudo chown $USER /opt/gangsal
 scp -r server.ts og.ts public package.json bun.lock user@vps:/opt/gangsal/
 # di VPS
 cd /opt/gangsal && bun install --production
-# font untuk teks di gambar pratinjau /og/<kode>.png (tanpa font, teksnya kosong)
-sudo dnf install -y dejavu-sans-fonts
+# font untuk teks gambar pratinjau /og/<kode>.png (AlmaLinux umumnya sudah punya)
+sudo dnf install -y liberation-sans-fonts
 ```
 
 Data SQLite disimpan di `/opt/gangsal/data/gangsal.sqlite` (dibuat otomatis, tidak ikut repo).
@@ -55,6 +55,6 @@ DNS: tambah A record `<SUBDOMAIN>` ke IP VPS sebelum certbot.
 
 - Buka `https://<SUBDOMAIN>`, kerjakan tes sampai hasil, pastikan status "Hasil masuk rekap peserta".
 - Tab Rekap menampilkan jumlah peserta bertambah.
-- Buka `https://<SUBDOMAIN>/og/72-55-40-80-30.png`: harus tampil gambar dengan teks nama dimensi. Kalau teksnya kosong, font belum terpasang.
+- Buka `https://<SUBDOMAIN>/og/72-55-40-80-30.png`: harus tampil gambar dengan teks nama dimensi. Kalau teksnya kosong atau berhuruf serif, pasang font Liberation Sans (`liberation-sans-fonts`).
 - Tempel tautan `https://<SUBDOMAIN>/h/72-55-40-80-30` ke chat WhatsApp atau ke pratinjau di opengraph.xyz untuk melihat kartu pratinjau.
 - Cadangan data: `sqlite3 /opt/gangsal/data/gangsal.sqlite ".backup /root/gangsal-$(date +%F).sqlite"`.

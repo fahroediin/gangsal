@@ -3,7 +3,8 @@ import { Resvg } from "@resvg/resvg-js";
 import { DIMS, level, persona } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 
-const FONT = "Inter, 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif";
+// Liberation Sans ada di AlmaLinux bawaan; Arial untuk Windows/macOS saat pengembangan.
+const FONT = "Liberation Sans, Arial, DejaVu Sans, sans-serif";
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 export function ogSVG(s: Record<string, number>, host: string): string {
@@ -36,7 +37,7 @@ export function ogPNG(code: string, s: Record<string, number>, host: string): Ui
   const key = code + "|" + host;
   const hit = cache.get(key);
   if (hit) return hit;
-  const png = new Resvg(ogSVG(s, host), { font: { loadSystemFonts: true, defaultFontFamily: "DejaVu Sans" } }).render().asPng();
+  const png = new Resvg(ogSVG(s, host), { font: { loadSystemFonts: true, defaultFontFamily: "Liberation Sans", sansSerifFamily: "Liberation Sans" } }).render().asPng();
   if (cache.size >= 500) cache.delete(cache.keys().next().value!);
   cache.set(key, png);
   return png;
