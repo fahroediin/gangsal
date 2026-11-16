@@ -55,6 +55,6 @@ DNS: tambah A record `<SUBDOMAIN>` ke IP VPS sebelum certbot.
 
 - Buka `https://<SUBDOMAIN>`, kerjakan tes sampai hasil, pastikan status "Hasil masuk rekap peserta".
 - Tab Rekap menampilkan jumlah peserta bertambah.
-- Buka `https://<SUBDOMAIN>/og/72-55-40-80-30.png`: harus tampil gambar dengan teks nama dimensi. Kalau teksnya kosong atau berhuruf serif, pasang font Liberation Sans (`liberation-sans-fonts`).
-- Tempel tautan `https://<SUBDOMAIN>/h/72-55-40-80-30` ke chat WhatsApp atau ke pratinjau di opengraph.xyz untuk melihat kartu pratinjau.
+- Buka `https://<SUBDOMAIN>/og/73-55-40-80-30.png`: harus tampil gambar dengan teks nama dimensi. Kalau teksnya kosong atau berhuruf serif, pasang font Liberation Sans (`liberation-sans-fonts`).
+- Tempel tautan `https://<SUBDOMAIN>/h/73-55-40-80-30` ke chat WhatsApp atau ke pratinjau di opengraph.xyz untuk melihat kartu pratinjau.
 - Cadangan data: `sqlite3 /opt/gangsal/data/gangsal.sqlite ".backup /root/gangsal-$(date +%F).sqlite"`.

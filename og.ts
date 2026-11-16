@@ -32,13 +32,18 @@ ${rows}
 </svg>`;
 }
 
+// Cache LRU di memori. ~55 KB per gambar, jadi 300 gambar sekitar 16 MB (VPS hanya 1 GB).
+const CACHE_MAX = 300;
 const cache = new Map<string, Uint8Array>();
+export function ogCached(code: string, host: string): boolean {
+  return cache.has(code + "|" + host);
+}
 export function ogPNG(code: string, s: Record<string, number>, host: string): Uint8Array {
   const key = code + "|" + host;
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit) { cache.delete(key); cache.set(key, hit); return hit; }   // geser ke paling baru
   const png = new Resvg(ogSVG(s, host), { font: { loadSystemFonts: true, defaultFontFamily: "Liberation Sans", sansSerifFamily: "Liberation Sans" } }).render().asPng();
-  if (cache.size >= 500) cache.delete(cache.keys().next().value!);
+  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
   cache.set(key, png);
   return png;
 }

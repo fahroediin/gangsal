@@ -7,7 +7,7 @@ import { characterSVG } from "./public/character.js";
 
 const dbFile = join(tmpdir(), `gangsal-test-${Date.now()}.sqlite`);
 process.env.DB_PATH = dbFile;
-const { startServer, validate, sharePage } = await import("./server.ts");
+const { startServer, validate, sharePage, shareCode, makeLimiter } = await import("./server.ts");
 
 let server: ReturnType<typeof startServer>;
 let base = "";
@@ -94,16 +94,16 @@ describe("API", () => {
     expect((await fetch(base + "/api/results")).status).toBe(405);
   });
   test("halaman share punya meta khusus, kode rusak dialihkan", async () => {
-    const r = await fetch(base + "/h/72-55-40-80-30");
+    const r = await fetch(base + "/h/73-55-40-80-30");
     const html = await r.text();
     expect(r.status).toBe(200);
     expect(html).toContain('property="og:title"');
-    expect(html).toContain("Ekstraversi 72");
+    expect(html).toContain("Ekstraversi 73");
     expect(sharePage("bukan-kode", base)).toBeNull();
     expect((await fetch(base + "/h/abc", { redirect: "manual" })).status).toBe(302);
   });
   test("gambar pratinjau PNG 1200x630 dan meta og:image", async () => {
-    const r = await fetch(base + "/og/72-55-40-80-30.png");
+    const r = await fetch(base + "/og/73-55-40-80-30.png");
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe("image/png");
     const buf = new Uint8Array(await r.arrayBuffer());
@@ -111,10 +111,10 @@ describe("API", () => {
     const dv = new DataView(buf.buffer);
     expect([dv.getUint32(16), dv.getUint32(20)]).toEqual([1200, 630]);
     expect((await fetch(base + "/og/abc.png")).status).toBe(404);
-    expect(await (await fetch(base + "/h/72-55-40-80-30")).text()).toContain("/og/72-55-40-80-30.png");
+    expect(await (await fetch(base + "/h/73-55-40-80-30")).text()).toContain("/og/73-55-40-80-30.png");
   });
   test("gambar karakter SVG dan file statis", async () => {
-    const c = await fetch(base + "/c/72-55-40-80-30.svg");
+    const c = await fetch(base + "/c/73-55-40-80-30.svg");
     expect(c.headers.get("content-type")).toBe("image/svg+xml");
     expect(await c.text()).toContain("<svg");
     const r = await fetch(base + "/");
@@ -125,5 +125,52 @@ describe("API", () => {
     let last = 0;
     for (let i = 0; i < 25; i++) last = (await post({ cid: cid(100 + i), answers: new Array(50).fill(3) })).status;
     expect(last).toBe(429);
+  });
+});
+
+describe("keamanan", () => {
+  test("URL dengan encoding rusak tidak memicu error 500 atau halaman error Bun", async () => {
+    for (const p of ["/%E0%A4%A", "/h/%E0%A4%A", "/%ZZ"]) {
+      const r = await fetch(base + p, { redirect: "manual" });
+      expect([302, 404]).toContain(r.status);
+      expect(await r.text()).not.toContain("__bun");
+    }
+  });
+  test("database, dotfile, folder, dan file di luar public tidak bisa diambil", async () => {
+    for (const p of ["/data/gangsal.sqlite", "/../data/gangsal.sqlite", "/%2e%2e/server.ts", "/%2e%2e%5cserver.ts",
+      "/.git/config", "/%2egit/config", "/package.json", "/server.ts", "/public/", "/index.html%00.js"]) {
+      expect((await fetch(base + p)).status).toBe(404);
+    }
+  });
+  test("hanya skor yang bisa dihasilkan tes yang diterima di tautan share", async () => {
+    expect(shareCode("73-55-40-80-30")).not.toBeNull();
+    expect(shareCode("72-55-40-80-30")).toBeNull();   // 72 tidak mungkin keluar dari 10 jawaban
+    expect((await fetch(base + "/og/72-55-40-80-30.png")).status).toBe(404);
+    expect((await fetch(base + "/c/1-2-3-4-6.svg")).status).toBe(404);
+  });
+  test("body besar tanpa Content-Length ditolak", async () => {
+    const big = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("x".repeat(200_000))); c.close(); } });
+    const r = await fetch(base + "/api/results", { method: "POST", headers: { "Content-Type": "application/json" }, body: big, duplex: "half" } as any);
+    expect(r.status).toBe(413);
+  });
+  test("render gambar baru dibatasi per IP, gambar di cache tetap dilayani", async () => {
+    const codes = Array.from({ length: 14 }, (_, k) => `${Math.round(k * 2.5)}-50-50-50-50`);
+    const statuses: number[] = [];
+    for (const c of codes) statuses.push((await fetch(`${base}/og/${c}.png`)).status);
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
+    expect((await fetch(base + "/og/73-55-40-80-30.png")).status).toBe(200);   // sudah di cache
+  });
+  test("header keamanan lengkap", async () => {
+    const r = await fetch(base + "/");
+    for (const h of ["content-security-policy", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy"]) {
+      expect(r.headers.get(h)).toBeTruthy();
+    }
+  });
+  test("pembatas laju membuang kunci lama dan reset saat banjir", () => {
+    const lim = makeLimiter(1, 60_000, 3);
+    expect(lim("a")).toBe(false);
+    expect(lim("a")).toBe(true);
+    for (const k of ["b", "c", "d", "e"]) lim(k);
+    expect(lim("a")).toBe(false);   // peta dikosongkan saat melebihi batas kunci
   });
 });

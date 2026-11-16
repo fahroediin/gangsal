@@ -73,7 +73,7 @@ The tests check the item keys against the IPIP source, the scoring, the characte
 | Route | Description |
 |---|---|
 | `GET /` | The app |
-| `GET /h/<E-A-C-S-I>` | Shared result page with Open Graph tags, for example `/h/72-55-40-80-30` |
+| `GET /h/<E-A-C-S-I>` | Shared result page with Open Graph tags, for example `/h/73-55-40-80-30` |
 | `GET /og/<code>.png` | 1200x630 link preview image |
 | `GET /c/<code>.svg` | The animated character as a standalone SVG |
 | `POST /api/results` | Save answers: `{ "cid": "<uuid>", "answers": [50 integers from 1 to 5] }`. Scores are recalculated on the server. Limited to 20 requests per IP per hour. |
