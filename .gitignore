@@ -3,3 +3,4 @@ data/
 *.sqlite-*
 node_modules/
 artifact/
+video/
