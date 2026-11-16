@@ -202,6 +202,29 @@ main:focus{outline:none}
 .lv-legend i{width:16px;height:16px;border-radius:4px;display:inline-block}
 .empty{padding:32px 24px;text-align:center;color:var(--muted);border:2px dashed var(--line);border-radius:18px;font-size:1.05rem}
 
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rowdel .btn{min-height:40px;padding:0 6px;font-size:.95rem}
+.rowdel-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:.95rem}
+.rowdel-confirm .btn{min-height:44px}
+@media (max-width:760px){.rtable td.rowdel{grid-column:1/-1}}
+.consent-text{display:flex;flex-direction:column;gap:6px}
+.consent-text ul{margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:4px}
+.consent-text a,.note a,.catalog-head a{color:inherit}
+
+/* halaman metode */
+.method{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+.method section{display:flex;flex-direction:column;gap:10px}
+.method h2{font-size:1.45rem}
+.method p,.method li{line-height:1.7}
+.method ul,.method ol{margin:0;padding-left:1.3rem;display:flex;flex-direction:column;gap:6px}
+.method .cite{color:var(--muted)}
+.method table{width:100%;border-collapse:collapse;font-size:1rem}
+.method th,.method td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.method thead th{background:var(--soft)}
+.method .refs li{overflow-wrap:anywhere;padding-left:.2rem}
+.method a{color:var(--ink)}
+.tbl-scroll{overflow-x:auto;border:2px solid var(--line);border-radius:14px;background:var(--surface)}
+
 /* daftar karakter + OCEAN */
 .catalog{margin-top:clamp(40px,7vw,80px);display:flex;flex-direction:column;gap:20px}
 .catalog-head{display:flex;flex-direction:column;gap:10px;max-width:46rem}

@@ -47,13 +47,22 @@ Per-participant data is deleted automatically 90 days after an invitation's dead
 
 ## The test items
 
-The statements are the **IPIP Big-Five Factor Markers, 50-item version** (Goldberg, 1992), published at [ipip.ori.org](https://ipip.ori.org) and placed in the public domain. The Indonesian translation was written for this project and has **not been validated psychometrically**. The server stores raw answers so that reliability (for example Cronbach's alpha per dimension) can be checked once enough people have taken the test.
+The statements are the **IPIP Big-Five Factor Markers, 50-item version** (Goldberg, 1992), published at [ipip.ori.org](https://ipip.ori.org) and placed in the public domain. The Indonesian wording is the validated **IPIP-BFM-50 Indonesia** adaptation (Akhtar & Azwar, 2019; alpha .76 to .86, n = 502), used under CC BY-SA 4.0 (see `public/items-id.js`).
 
-Scores are calculated from the person's own answers: 0 means always choosing the low end, 100 always the high end. They are not percentiles, because there are no Indonesian norms yet.
+How the app follows the published guidance:
+
+- **Scoring** follows the IPIP scoring instructions (1 to 5, reverse keyed items, summed per scale), then converts to POMP, the percent of maximum possible score (Cohen et al., 1999). POMP is not a percentile.
+- **Low, medium and high** follow IPIP's advice to use the sample's own mean plus or minus half a standard deviation. The app switches to these norms once 100 people have taken the test; until then the labels use provisional cut-offs of 35 and 65 and say so.
+- **Characters are illustrations, not types.** IPIP cautions against sorting people into categories; every result shows the full five scores.
+- **OCEAN view**: O uses IPIP's Intellect/Imagination scale (closest to Openness); N is 100 minus Emotional Stability.
+- **Use by organisations**: under the Indonesian Psychological Association code of ethics (HIMPSI, 2010, Articles 62 to 65), a psychological examination report with recommendations can only be made by a psychologist. The app tells organisations not to use results as the sole basis for decisions.
+- **Personal data** (Indonesian Law 27/2022): consent is recorded with each invitation result (Art. 22), organisers can delete one participant or a whole invitation (Art. 8, 43), and data is deleted 90 days after the deadline.
+
+The full method, the mapping to each rule and the reference list are on the `/metode` page of the app.
 
 ## Disclaimer
 
-Results are for self-reflection. Do not use them for psychological diagnosis or for hiring decisions.
+Results are for self-reflection and conversation, not psychological diagnosis. Do not use them as the only basis for hiring or appraisal decisions; involve a psychologist for selection decisions.
 
 ## Tech stack
 
@@ -126,4 +135,7 @@ public/
 
 ## License
 
-The code is released under the [MIT License](LICENSE). The test items are the IPIP Big-Five Factor Markers, which are in the public domain and are not covered by this license.
+The code is released under the [MIT License](LICENSE), except `public/items-id.js`.
+
+- `public/items-id.js` contains the Indonesian item wording from Akhtar & Azwar (2019), *Jurnal Psikologi* 46(1), 32-44, https://doi.org/10.22146/jpsi.33571, and is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), following the source article. Changes to that file must keep the same license.
+- The original English items are the IPIP Big-Five Factor Markers (Goldberg, 1992), in the public domain.

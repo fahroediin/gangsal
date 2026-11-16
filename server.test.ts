@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ITEMS, DIMS, score, level, encode, decode, persona, basePersonas, OCEAN } from "./public/core.js";
+import { ITEMS, DIMS, score, level, encode, decode, persona, basePersonas, OCEAN, ITEM_META, CONSENT_VERSION, normsReady, NORM_MIN_N } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 
 const dbFile = join(tmpdir(), `gangsal-test-${Date.now()}.sqlite`);
@@ -50,6 +50,20 @@ describe("skoring", () => {
   test("nama persona", () => {
     expect(persona({ E: 50, A: 52, C: 48, S: 55, I: 45 })).toBe("Si Penyeimbang");
     expect(persona({ E: 95, A: 50, C: 50, S: 50, I: 20 })).toBe("Si Penggembira yang Membumi");
+  });
+  test("butir memakai IPIP-BFM-50 Indonesia dengan kode dan kunci sesuai IPIP", () => {
+    expect(ITEM_META.map((m) => m.code).slice(0, 5)).toEqual(["E1", "A2", "C3", "ES4", "I5"]);
+    expect(ITEMS[0][0]).toBe("Menghidupkan suasana dalam suatu acara");      // Akhtar & Azwar (2019)
+    expect(ITEM_META[0].en).toBe("Am the life of the party.");
+    // kode butir konsisten dengan dimensi (ES = Stabilitas Emosi = S)
+    ITEM_META.forEach((m, i) => expect(m.code.replace(/\d+$/, "").replace("ES", "S")).toBe(ITEMS[i][1]));
+  });
+  test("tingkat memakai norma ±0,5 SD bila sampel cukup", () => {
+    const norm = { mean: 60, sd: 20 };
+    expect([level(49, norm), level(50, norm), level(70, norm), level(71, norm)]).toEqual(["rendah", "sedang", "sedang", "tinggi"]);
+    expect(level(30, null)).toBe("rendah");                                  // batas sementara
+    expect(normsReady({ n: NORM_MIN_N - 1 })).toBe(false);
+    expect(normsReady({ n: NORM_MIN_N })).toBe(true);
   });
   test("katalog 11 karakter dasar konsisten dengan nama persona", () => {
     const list = basePersonas();
@@ -193,8 +207,9 @@ describe("API undangan", () => {
     expect(JSON.stringify(pub)).not.toContain("admin");
 
     const totalBefore = (await (await fetch(base + "/api/stats")).json()).total;
-    const send = async (n: number, name: string) => fetch(`${base}/api/invites/${code}/results`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid: cid(500 + n), answers: maxFor("C"), name: await ic.sealName(name, keys.pub) }) });
+    const send = async (n: number, name: string, consent: any = CONSENT_VERSION) => fetch(`${base}/api/invites/${code}/results`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: cid(500 + n), answers: maxFor("C"), name: await ic.sealName(name, keys.pub), consent }) });
+    expect((await send(9, "Tanpa Setuju", null)).status).toBe(400);   // persetujuan wajib
     expect((await send(1, "Budi Santoso")).status).toBe(201);
     expect((await send(1, "Budi Santoso")).status).toBe(409);           // perangkat sama, undangan sama
     expect((await send(2, "Ani")).status).toBe(201);
@@ -209,6 +224,14 @@ describe("API undangan", () => {
     expect(await ic.openName(data.rows[0].name, keys.priv)).toBe("Budi Santoso");
     expect(data.rows[0].scores.C).toBe(100);
     expect(data.invite.full).toBe(true);
+    expect(data.rows[0].consent).toBe(CONSENT_VERSION);   // persetujuan terekam
+    // hapus satu peserta: butuh token, lalu barisnya hilang
+    const id = data.rows[1].id;
+    expect((await fetch(`${base}/api/invites/${code}/results/${id}`, { method: "DELETE" })).status).toBe(403);
+    expect((await fetch(`${base}/api/invites/${code}/results/${id}`, { method: "DELETE", headers: { "X-Admin-Token": keys.adminToken } })).status).toBe(200);
+    const after = await (await fetch(`${base}/api/invites/${code}/results`, { headers: { "X-Admin-Token": keys.adminToken } })).json();
+    expect(after.rows.length).toBe(1);
+    expect((await fetch(`${base}/api/invites/${code}/results/${id}`, { method: "DELETE", headers: { "X-Admin-Token": keys.adminToken } })).status).toBe(404);
     // skor anonim ikut rekap umum (tunggu cache stats 10 detik tidak perlu: cache dibuang saat ada kiriman)
     expect((await (await fetch(base + "/api/stats")).json()).total).toBe(totalBefore + 2);
   });
@@ -231,7 +254,7 @@ describe("API undangan", () => {
     d.run("UPDATE invites SET expires_at = ? WHERE code = ?", [Date.now() - 1000, c2]);
     d.close();
     const res = await fetch(`${base}/api/invites/${c2}/results`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid: cid(900), answers: maxFor("E"), name: await ic.sealName("X Y", keys.pub) }) });
+      body: JSON.stringify({ cid: cid(900), answers: maxFor("E"), name: await ic.sealName("X Y", keys.pub), consent: CONSENT_VERSION }) });
     expect(res.status).toBe(410);
     expect((await (await fetch(`${base}/api/invites/${c2}`)).json()).open).toBe(false);
     cleanupInvitesNow(Date.now() + RETENTION_MS + 5000);
@@ -240,6 +263,11 @@ describe("API undangan", () => {
   });
   test("halaman undangan dan rekap disajikan, rekap tidak di-cache", async () => {
     expect((await fetch(base + "/undang")).status).toBe(200);
+    expect((await fetch(base + "/metode")).status).toBe(200);
+    expect((await fetch(base + "/items-id.js")).headers.get("content-type")).toContain("javascript");
+    const st = await (await fetch(base + "/api/stats")).json();
+    expect(st.norms.n).toBe(st.total);
+    expect(typeof st.normsReady).toBe("boolean");
     expect((await fetch(base + "/i/abcdefgh")).status).toBe(200);
     const r = await fetch(base + "/r/abcdefgh");
     expect(r.headers.get("cache-control")).toBe("no-store");

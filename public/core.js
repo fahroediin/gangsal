@@ -1,6 +1,7 @@
 // Inti tes: soal, kunci skoring, dan perhitungan skor. Dipakai browser (app.js) dan server (server.ts).
 // Soal: IPIP Big-Five Factor Markers 50 item (Goldberg, 1992), public domain, https://ipip.ori.org.
-// Terjemahan bahasa Indonesia: tim Gangsal (belum divalidasi secara psikometrik).
+// Terjemahan: IPIP-BFM-50 Indonesia (Akhtar & Azwar, 2019), CC BY-SA 4.0, lihat items-id.js.
+import { ITEMS_ID } from "./items-id.js";
 
 export const DIMS = [
   { key: "E", name: "Ekstraversi", short: "Ekstraversi",
@@ -17,62 +18,13 @@ export const DIMS = [
     about: "Seberapa tenang kamu menghadapi tekanan. Kebalikan dari kecenderungan cemas atau mudah gelisah." },
   { key: "I", name: "Imajinasi", short: "Imajinasi",
     low: "Membumi", high: "Imajinatif",
-    about: "Seberapa tertarik kamu pada ide, gagasan abstrak, dan hal-hal baru. Disebut juga Intelek atau Keterbukaan." }
+    about: "Seberapa tertarik kamu pada ide, gagasan abstrak, dan hal-hal baru. Di IPIP disebut Intelek/Imajinasi; padanan terdekatnya di OCEAN adalah Keterbukaan (O)." }
 ];
 
 // [teks, dimensi, arah] dalam urutan asli IPIP (dimensi berselang-seling, kunci + dan - bergantian).
-export const ITEMS = [
-  ["Saya menjadi penghidup suasana di acara kumpul-kumpul.", "E", 1],
-  ["Saya kurang peduli pada orang lain.", "A", -1],
-  ["Saya selalu siap sebelum melakukan sesuatu.", "C", 1],
-  ["Saya mudah stres.", "S", -1],
-  ["Kosakata saya kaya.", "I", 1],
-  ["Saya tidak banyak bicara.", "E", -1],
-  ["Saya tertarik pada orang lain.", "A", 1],
-  ["Saya meninggalkan barang-barang saya berserakan.", "C", -1],
-  ["Saya santai hampir sepanjang waktu.", "S", 1],
-  ["Saya sulit memahami ide-ide abstrak.", "I", -1],
-  ["Saya merasa nyaman berada di antara banyak orang.", "E", 1],
-  ["Saya menghina orang lain.", "A", -1],
-  ["Saya memperhatikan detail.", "C", 1],
-  ["Saya mengkhawatirkan banyak hal.", "S", -1],
-  ["Imajinasi saya hidup.", "I", 1],
-  ["Saya lebih suka berada di belakang layar.", "E", -1],
-  ["Saya ikut merasakan perasaan orang lain.", "A", 1],
-  ["Saya sering membuat keadaan jadi berantakan.", "C", -1],
-  ["Saya jarang merasa murung.", "S", 1],
-  ["Saya tidak tertarik pada ide-ide abstrak.", "I", -1],
-  ["Saya yang memulai percakapan.", "E", 1],
-  ["Saya tidak tertarik pada masalah orang lain.", "A", -1],
-  ["Saya langsung menyelesaikan pekerjaan rumah atau tugas sehari-hari.", "C", 1],
-  ["Perasaan saya mudah terusik.", "S", -1],
-  ["Saya punya ide-ide yang sangat bagus.", "I", 1],
-  ["Saya tidak punya banyak hal untuk dibicarakan.", "E", -1],
-  ["Hati saya lembut.", "A", 1],
-  ["Saya sering lupa mengembalikan barang ke tempatnya.", "C", -1],
-  ["Saya mudah merasa kesal.", "S", -1],
-  ["Daya khayal saya kurang.", "I", -1],
-  ["Di sebuah acara, saya mengobrol dengan banyak orang yang berbeda.", "E", 1],
-  ["Saya tidak terlalu tertarik pada orang lain.", "A", -1],
-  ["Saya menyukai keteraturan.", "C", 1],
-  ["Suasana hati saya sering berubah.", "S", -1],
-  ["Saya cepat memahami sesuatu.", "I", 1],
-  ["Saya tidak suka menarik perhatian.", "E", -1],
-  ["Saya meluangkan waktu untuk orang lain.", "A", 1],
-  ["Saya melalaikan kewajiban saya.", "C", -1],
-  ["Suasana hati saya sering naik-turun.", "S", -1],
-  ["Saya memakai kata-kata yang jarang dipakai orang.", "I", 1],
-  ["Saya tidak keberatan menjadi pusat perhatian.", "E", 1],
-  ["Saya ikut merasakan emosi orang lain.", "A", 1],
-  ["Saya mengikuti jadwal.", "C", 1],
-  ["Saya mudah jengkel.", "S", -1],
-  ["Saya meluangkan waktu untuk merenungkan berbagai hal.", "I", 1],
-  ["Saya pendiam di depan orang yang belum saya kenal.", "E", -1],
-  ["Saya membuat orang lain merasa nyaman.", "A", 1],
-  ["Saya menuntut ketepatan dalam pekerjaan saya.", "C", 1],
-  ["Saya sering merasa murung.", "S", -1],
-  ["Saya penuh ide.", "I", 1]
-];
+export const ITEMS = ITEMS_ID.map(([, text, , dim, key]) => [text, dim, key]);
+/** Kode butir (E1, A2, ...) dan butir asli bahasa Inggris, untuk halaman metode dan analisis reliabilitas. */
+export const ITEM_META = ITEMS_ID.map(([code, , en]) => ({ code, en }));
 
 export const SCALE = ["Sangat tidak sesuai", "Agak tidak sesuai", "Netral", "Agak sesuai", "Sangat sesuai"];
 export const SCALE_SHORT = ["Sangat tidak", "Tidak", "Netral", "Sesuai", "Sangat sesuai"];
@@ -92,7 +44,27 @@ export function score(answers) {
   return out;
 }
 
-export function level(v) { return v < 35 ? "rendah" : v > 65 ? "tinggi" : "sedang"; }
+/*
+ * Tingkat rendah/sedang/tinggi.
+ * Mengikuti saran IPIP ("Interpreting Individual IPIP Scale Scores"): skor dalam ±0,5 simpangan baku dari
+ * rata-rata sampel sendiri = sedang; di luar itu rendah atau tinggi. Norma dipakai setelah sampel cukup
+ * (NORM_MIN_N). Sebelum itu dipakai batas sementara pada skala POMP 0-100 dan ditandai sebagai sementara.
+ */
+/** Versi teks persetujuan peserta undangan; disimpan bersama hasil (UU PDP Pasal 22). Ganti bila teksnya berubah. */
+export const CONSENT_VERSION = "persetujuan-v1-2026-11";
+
+export const NORM_MIN_N = 100;
+export const PROVISIONAL = { low: 35, high: 65 };
+/** @param {number} v skor 0..100  @param {{mean:number, sd:number}|null} norm norma dimensi itu */
+export function level(v, norm = null) {
+  if (norm && norm.sd > 0) {
+    const half = norm.sd / 2;
+    return v < norm.mean - half ? "rendah" : v > norm.mean + half ? "tinggi" : "sedang";
+  }
+  return v < PROVISIONAL.low ? "rendah" : v > PROVISIONAL.high ? "tinggi" : "sedang";
+}
+/** Norma siap dipakai bila jumlah sampel memenuhi NORM_MIN_N. */
+export const normsReady = norms => !!norms && norms.n >= NORM_MIN_N;
 
 export const ORDER = DIMS.map(d => d.key);
 export function encode(s) { return ORDER.map(k => s[k]).join("-"); }

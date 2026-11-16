@@ -1,4 +1,4 @@
-import { DIMS, ITEMS, SCALE, TEXT, score, level, encode, decode, persona, basePersonas, OCEAN } from "/core.js";
+import { DIMS, ITEMS, SCALE, TEXT, score, level, encode, decode, persona, basePersonas, OCEAN, normsReady, NORM_MIN_N, CONSENT_VERSION } from "/core.js";
 import { characterSVG } from "/character.js";
 import { newInviteKeys, sha256Hex, encryptTitle, decryptTitle, sealName, openName,
   participantFragment, adminFragment, parseAdminFragment } from "/invite-crypto.js";
@@ -107,12 +107,33 @@ function radar(s, label){
   </svg>`;
 }
 
+/* ---------- norma sampel ---------- */
+// Diisi dari /api/stats. Label tingkat memakai norma (rata-rata ±0,5 SD) setelah sampel >= NORM_MIN_N.
+let NORMS = null;
+const normFor = k => normsReady(NORMS) ? NORMS[k] : null;
+function levelBasisNote(){
+  return normsReady(NORMS)
+    ? `Tingkat rendah, sedang, dan tinggi dibandingkan dengan ${NORMS.n} peserta Gangsal: sedang berarti dalam setengah simpangan baku dari rata-rata.`
+    : `Tingkat rendah, sedang, dan tinggi masih sementara (batas 35 dan 65) karena peserta belum mencapai ${NORM_MIN_N}. Setelah itu tingkat dihitung dari rata-rata peserta.`;
+}
+async function loadNorms(){
+  try{
+    const r = await fetch("/api/stats");
+    if (!r.ok) return;
+    const s = await r.json();
+    const changed = JSON.stringify(s.norms) !== JSON.stringify(NORMS);
+    NORMS = s.norms || null;
+    if (changed && normsReady(NORMS) && /^\/h\//.test(location.pathname)) route();
+  }catch(e){}
+}
+
 /* ---------- kartu karakter + OCEAN ---------- */
 function oceanHTML(s){
   return `<dl class="ocean" aria-label="Profil OCEAN">${OCEAN.map(o=>{ const v = o.from(s); return `
     <div title="${o.name} ${v}%"><dt style="color:var(--t-${DK[o.dim]})">${o.k}</dt><dd><span class="num">${v}%</span><i aria-hidden="true"><b style="width:${Math.max(v,3)}%;background:var(--d-${DK[o.dim]})"></b></i></dd></div>`; }).join("")}</dl>`;
 }
-const OCEAN_LEGEND = `<p class="ocean-legend">${OCEAN.map(o=>`<span><b>${o.k}</b> ${o.name}</span>`).join("")}</p>`;
+const OCEAN_LEGEND = `<p class="ocean-legend">${OCEAN.map(o=>`<span><b>${o.k}</b> ${o.name}</span>`).join("")}</p>
+  <p class="ocean-legend">Angka adalah persen dari skor maksimum (POMP), bukan persentil. O memakai skala Intelek/Imajinasi IPIP; N = 100 dikurangi Stabilitas Emosi. <a href="/metode#ocean">Penjelasan</a>.</p>`;
 // thumbnail tanpa animasi: banyak kartu sekaligus tidak perlu bergerak
 function personaCard(p, meta = ""){
   return `<li class="pcard">
@@ -159,6 +180,7 @@ function viewIntro(){
     <div class="catalog-head">
       <h2 id="catTitle">Karakter yang bisa kamu dapat</h2>
       <p class="lede">Nama karaktermu berasal dari sifat yang paling menonjol. Bila ada sifat kedua yang juga menonjol, namanya digabung, misalnya <i>Si Perancang yang Hangat</i>. Ini sebelas karakter dasarnya.</p>
+      <p class="note" style="margin-top:0">Karakter adalah ilustrasi supaya hasil mudah diingat, bukan tipe kepribadian. Big Five mengukur lima sifat sebagai rentang, dan skor lengkapmu tetap ditampilkan. <a href="/metode#karakter">Kenapa begitu</a>.</p>
       ${OCEAN_LEGEND}
     </div>
     <ul class="plist collapsed" id="catList">${basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`)).join("")}</ul>
@@ -272,7 +294,7 @@ async function finish(){
     try{
       const name = await sealName(inv.name, inv.pub);
       const res = await fetch(`/api/invites/${inv.code}/results`, {method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({cid:clientId(), answers:sent, name})});
+        body: JSON.stringify({cid:clientId(), answers:sent, name, consent: CONSENT_VERSION})});
       outcome = res.ok ? "ok" : res.status===410 ? "expired" : res.status===409 ? ((await res.json().catch(()=>({}))).error==="already" ? "already" : "full")
         : res.status===429 ? "limited" : "error";
     }catch(e){ outcome = "network"; }
@@ -374,13 +396,13 @@ function viewResult(s, code){
       ${radar(s, "Skor "+name)}
     </div>
     <div class="readings">
-      ${DIMS.map(d=>{ const v = s[d.key], lv = level(v); return `
+      ${DIMS.map(d=>{ const v = s[d.key], lv = level(v, normFor(d.key)); return `
       <article class="reading">
         <span class="score num" style="color:var(--t-${DK[d.key]})">${v}</span>
         <h3>${d.name} <small>${LEVEL_TXT[lv]}</small></h3>
         <p>${TEXT[d.key][lv]}</p>
       </article>`; }).join("")}
-      <p class="note">Skor 0 sampai 100 dihitung dari jawabanmu sendiri, bukan perbandingan dengan orang lain. Tidak ada skor yang lebih baik; tiap ujung punya kelebihannya.</p>
+      <p class="note">Skor 0 sampai 100 adalah persen dari skor maksimum yang mungkin (POMP), dihitung dari jawabanmu sendiri; bukan persentil. ${levelBasisNote()} Tidak ada skor yang lebih baik; tiap ujung punya kelebihannya. <a href="/metode">Cara penghitungan dan rujukan</a>.</p>
       ${mine ? `<div class="row" style="margin-top:20px"><button class="btn" id="again" type="button">Ulangi tes</button><button class="btn link" id="toRecap2" type="button">Lihat rekap peserta</button></div>` : ""}
     </div>
   </section>`;
@@ -448,6 +470,7 @@ async function loadRecap(){
     const res = await fetch("/api/stats", {signal:ctl.signal});
     if (!res.ok) throw new Error(String(res.status));
     recap = await res.json();
+    if (recap.norms) NORMS = recap.norms;
   }catch(e){ recapErr = "Rekap gagal dimuat. Periksa koneksi internet, lalu tekan Rekap lagi."; }
   finally{ clearTimeout(timer); }
   if (location.hash==="#rekap") viewRecap();
@@ -485,7 +508,8 @@ function viewRecap(){
                 ${LV.map(([l,bg,fg])=>b[l]?`<i style="width:${b[l]/n*100}%;background:${bg};color:${fg}">${Math.round(b[l]/n*100)}%</i>`:"").join("")}
               </div></div>`;}).join("")}
           </div>
-          <div class="lv-legend" style="margin-top:16px">${LV.map(([l,bg])=>`<span><i style="background:${bg};border:1px solid var(--line)"></i>${l[0].toUpperCase()+l.slice(1)} (${l==="rendah"?"0-34":l==="sedang"?"35-65":"66-100"})</span>`).join("")}</div>
+          <div class="lv-legend" style="margin-top:16px">${LV.map(([l,bg])=>`<span><i style="background:${bg};border:1px solid var(--line)"></i>${l[0].toUpperCase()+l.slice(1)}</span>`).join("")}</div>
+          <p class="note">${levelBasisNote()}</p>
           <p class="note">Satu hasil per perangkat. Tes ulang dari perangkat yang sama menimpa hasil lama.</p>
         </div>
       </section>
@@ -730,7 +754,15 @@ async function viewInviteJoin(code, opts = {}){
         <p class="field-error" id="pNameErr" role="alert" hidden></p>
       </div>
       <button class="btn primary join-go" type="submit">Mulai tes</button>
-      <p class="hint">Dengan menekan Mulai tes, kamu setuju nama dan hasil tesmu dikirim ke pembuat undangan ini, dan skormu ikut rekap umum tanpa nama. Namamu dienkripsi di perangkat ini; hanya pembuat undangan yang bisa membacanya.</p>
+      <div class="hint consent-text">
+        <p>Dengan menekan <b>Mulai tes</b>, kamu setuju:</p>
+        <ul>
+          <li>nama, jawaban, dan skormu dikirim ke pembuat undangan ini untuk keperluan yang ia sampaikan kepadamu;</li>
+          <li>skormu juga ikut rekap umum Gangsal tanpa nama;</li>
+          <li>data per peserta disimpan sampai 90 hari setelah batas waktu undangan, lalu dihapus otomatis.</li>
+        </ul>
+        <p>Namamu dienkripsi di perangkat ini; hanya pembuat undangan yang bisa membacanya. Kamu berhak meminta pembuat undangan menghapus datamu kapan saja. Hasil tes sebaiknya tidak menjadi satu-satunya dasar keputusan tentang dirimu. <a href="/metode">Metode dan rujukan</a>.</p>
+      </div>
     </form>
   </section>`;
   const nm = $("#pName"), nmErr = $("#pNameErr");
@@ -784,7 +816,7 @@ async function viewInviteRecap(code, opts = {}){
   const rows = [];
   for (const r of data.rows){
     let name; try{ name = await openName(r.name, keys.priv); }catch(e){ name = null; }
-    rows.push({ name, scores: r.scores, at: r.at, persona: persona(r.scores) });
+    rows.push({ id: r.id, name, scores: r.scores, at: r.at, persona: persona(r.scores) });
   }
   const inv = data.invite, now = Date.now(), n = rows.length;
   const avg = {}; DIMS.forEach(d=>avg[d.key] = n ? Math.round(rows.reduce((t,r)=>t+r.scores[d.key],0)/n) : 50);
@@ -799,15 +831,34 @@ async function viewInviteRecap(code, opts = {}){
     });
     const th = (k, label)=>`<th scope="col" aria-sort="${sortKey===k ? (sortDir>0?"ascending":"descending") : "none"}"><button type="button" class="sort" data-k="${k}">${label}${sortKey===k ? (sortDir>0?" (naik)":" (turun)") : ""}</button></th>`;
     $("#tableWrap").innerHTML = n ? `<table class="rtable">
-      <thead><tr>${th("name","Nama")}${DIMS.map(d=>th(d.key, d.short)).join("")}<th scope="col">Karakter</th>${th("at","Waktu")}</tr></thead>
+      <thead><tr>${th("name","Nama")}${DIMS.map(d=>th(d.key, d.short)).join("")}<th scope="col">Karakter</th>${th("at","Waktu")}<th scope="col"><span class="sr-only">Hapus</span></th></tr></thead>
       <tbody>${sorted.map(r=>`<tr>
         <th scope="row">${r.name===null ? `<span class="muted">Nama tidak terbaca</span>` : esc(r.name)}</th>
-        ${DIMS.map(d=>{ const v = r.scores[d.key]; return `<td class="num sc" data-label="${CARD_LABEL[d.key]}" title="${d.name} ${v}"><span class="cell-score lv-${level(v)}">${v}</span></td>`; }).join("")}
+        ${DIMS.map(d=>{ const v = r.scores[d.key]; return `<td class="num sc" data-label="${CARD_LABEL[d.key]}" title="${d.name} ${v}"><span class="cell-score lv-${level(v, normFor(d.key))}">${v}</span></td>`; }).join("")}
         <td class="persona" data-label="Karakter"><a href="/h/${encode(r.scores)}" target="_blank" rel="noopener">${esc(r.persona)}</a></td>
-        <td class="num muted when" data-label="Waktu">${fmtTime(r.at)}</td></tr>`).join("")}</tbody></table>`
+        <td class="num muted when" data-label="Waktu">${fmtTime(r.at)}</td>
+        <td class="rowdel"><button class="btn link" type="button" data-del="${r.id}" data-name="${esc(r.name ?? "peserta ini")}">Hapus data</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="empty">Belum ada peserta yang mengirim hasil. Bagikan link peserta di atas.</div>`;
     document.querySelectorAll(".sort").forEach(b=>b.onclick = ()=>{ const k = b.dataset.k; sortDir = sortKey===k ? -sortDir : (k==="name"||k==="at" ? 1 : -1); sortKey = k; recapSort = { code, key: sortKey, dir: sortDir }; render(); });
     if ($("#sortSel")) $("#sortSel").value = ["name","at",...DIMS.map(d=>d.key)].includes(sortKey) ? sortKey : "at";
+    // Hapus data satu peserta (misalnya atas permintaan peserta itu).
+    document.querySelectorAll("[data-del]").forEach(b=>b.onclick = ()=>{
+      const cell = b.parentElement, id = b.dataset.del, who = b.dataset.name;
+      clearInterval(recapTimer);
+      cell.innerHTML = `<div class="rowdel-confirm" role="group" aria-label="Konfirmasi hapus">
+        <span>Hapus nama dan hasil <b>${esc(who)}</b> secara permanen?</span>
+        <button class="btn danger-btn" type="button" data-yes>Hapus</button>
+        <button class="btn link" type="button" data-no>Batal</button></div>`;
+      cell.querySelector("[data-no]").onclick = ()=>viewInviteRecap(code, { silent: true });
+      cell.querySelector("[data-yes]").onclick = async ()=>{
+        try{
+          const res = await fetch(`/api/invites/${code}/results/${id}`, { method:"DELETE", headers: { "X-Admin-Token": keys.adminToken } });
+          if (!res.ok) throw new Error();
+          viewInviteRecap(code, { silent: true });
+        }catch(e){ cell.querySelector("span").textContent = "Gagal menghapus. Periksa koneksi lalu coba lagi."; }
+      };
+      cell.querySelector("[data-yes]").focus();
+    });
   };
   $("#view").innerHTML = `
   <section class="recap-inv">
@@ -831,7 +882,7 @@ async function viewInviteRecap(code, opts = {}){
       <option value="at">Waktu mengisi</option><option value="name">Nama</option>
       ${DIMS.map(d=>`<option value="${d.key}">${d.name} tertinggi</option>`).join("")}</select></div>` : ""}
     <div class="table-scroll" id="tableWrap"></div>
-    <p class="note">Rendah 0-34, sedang 35-65, tinggi 66-100. Skor dihitung dari jawaban peserta sendiri, bukan perbandingan dengan populasi. Gunakan sebagai bahan percakapan, bukan satu-satunya dasar keputusan.</p>
+    <p class="note">Skor 0-100 adalah persen dari skor maksimum (POMP), bukan persentil. ${levelBasisNote()} Gunakan sebagai bahan percakapan, bukan satu-satunya dasar keputusan; untuk keputusan seleksi, libatkan psikolog. <a href="/metode">Metode dan rujukan</a>.</p>
   </section>
   ${n ? `<section class="profile inv-avg">
     <div><h2 style="margin-bottom:12px">Rata-rata ${n} peserta</h2>${radar(avg, "Rata-rata peserta undangan")}</div>
@@ -887,6 +938,100 @@ async function viewInviteRecap(code, opts = {}){
   };
 }
 
+/* ---------- metode dan rujukan ---------- */
+function viewMethod(){
+  setNav(""); setTitle("Metode dan rujukan"); quizActive = false;
+  const n = NORMS ? NORMS.n : null;
+  $("#view").innerHTML = `
+  <article class="method">
+    <header class="stack" style="display:flex;flex-direction:column;gap:12px">
+      <h1>Metode dan rujukan</h1>
+      <p class="lede">Bagaimana Gangsal mengukur kepribadian, menghitung skor, dan menangani data, beserta sumbernya. Rujukan bertanda angka dalam kurung siku ada di bagian akhir.</p>
+    </header>
+
+    <section id="model">
+      <h2>Yang diukur: lima faktor kepribadian</h2>
+      <p>Gangsal memakai model lima faktor (Big Five): Ekstraversi, Keramahan, Kehati-hatian, Stabilitas Emosi, dan Intelek/Imajinasi. Model ini lahir dari pendekatan leksikal, yaitu analisis kata sifat yang dipakai orang untuk menggambarkan kepribadian <span class="cite">[3]</span>, dan merupakan model kepribadian yang paling banyak dipakai dalam penelitian <span class="cite">[8]</span>.</p>
+    </section>
+
+    <section id="butir">
+      <h2>Pernyataan tes dan terjemahannya</h2>
+      <p>Tes berisi 50 pernyataan dari <b>IPIP Big-Five Factor Markers</b> <span class="cite">[3][4]</span>. Butir IPIP berstatus public domain sehingga boleh dipakai dan diterjemahkan bebas <span class="cite">[5]</span>.</p>
+      <p>Teks bahasa Indonesianya memakai <b>IPIP-BFM-50 Indonesia</b> hasil adaptasi Akhtar dan Azwar <span class="cite">[2]</span>, yang disusun mengikuti pedoman International Test Commission <span class="cite">[7]</span>. Pada 502 responden, reliabilitas (alpha) tiap skala: Ekstraversi 0,836; Keramahan 0,762; Kehati-hatian 0,811; Stabilitas Emosi 0,862; Intelek 0,768 <span class="cite">[2]</span>. Teks butir dipakai di bawah lisensi CC BY-SA 4.0. Satu perubahan kecil: butir I35 ditulis "Cepat dalam memahami sesuatu" mengikuti versi 2018 <span class="cite">[1]</span>, karena di artikel 2019 kalimatnya tampak terpotong.</p>
+      <p>Batasan: sampel validasi berusia rata-rata sekitar 20,65 tahun <span class="cite">[1]</span>. Kode Etik Psikologi Indonesia meminta alat dipakai sesuai populasi saat validasi diuji, dan bila belum diuji, kekuatan serta kelemahannya dijelaskan <span class="cite">[6, Pasal 63 ayat 1]</span>. Untuk peserta yang jauh lebih tua, perlakukan hasil dengan lebih hati-hati.</p>
+    </section>
+
+    <section id="skor">
+      <h2>Cara menghitung skor</h2>
+      <ol>
+        <li>Setiap jawaban diberi nilai 1 (Sangat tidak sesuai) sampai 5 (Sangat sesuai). Untuk pernyataan berkunci negatif, nilainya dibalik (1 jadi 5, dan seterusnya), lalu nilai 10 pernyataan tiap skala dijumlahkan, sesuai pedoman skoring IPIP <span class="cite">[5]</span>.</li>
+        <li>Jumlah itu diubah ke skala 0 sampai 100 sebagai <b>persen dari skor maksimum yang mungkin (POMP)</b> <span class="cite">[9]</span>: 0 berarti selalu memilih ujung rendah, 100 selalu ujung tinggi. POMP bukan persentil; angka 70 tidak berarti "lebih tinggi dari 70% orang".</li>
+      </ol>
+    </section>
+
+    <section id="tingkat">
+      <h2>Label rendah, sedang, tinggi</h2>
+      <p>IPIP menyarankan menghitung rata-rata dan simpangan baku dari sampel sendiri, lalu menganggap skor dalam setengah simpangan baku dari rata-rata sebagai "rata-rata" dan di luar itu sebagai rendah atau tinggi <span class="cite">[5]</span>. Gangsal memakai cara ini setelah peserta mencapai ${NORM_MIN_N} orang. Sebelum itu label memakai batas sementara 35 dan 65 dan selalu ditandai "sementara".</p>
+      <p>Status saat ini: ${n === null ? "memuat data peserta..." : normsReady(NORMS) ? `norma aktif dari ${n} peserta.` : `${n} peserta, norma belum aktif.`}</p>
+    </section>
+
+    <section id="ocean">
+      <h2>OCEAN</h2>
+      <p>Daftar karakter menampilkan skor dalam urutan OCEAN. O memakai skala Intelek/Imajinasi dari IPIP, padanan terdekat Keterbukaan (Openness) pada model lima faktor <span class="cite">[3][8]</span>; keduanya tidak identik. N (Neurotisisme) adalah kutub kebalikan Stabilitas Emosi, sehingga dihitung 100 dikurangi skor Stabilitas Emosi.</p>
+    </section>
+
+    <section id="karakter">
+      <h2>Karakter adalah ilustrasi, bukan tipe</h2>
+      <p>Lima sifat Big Five adalah rentang, bukan kotak. IPIP secara tegas tidak menganjurkan memilah orang ke dalam kategori atau tipe berdasarkan skor <span class="cite">[5]</span>. Nama dan gambar karakter di Gangsal hanya ilustrasi supaya hasil mudah diingat: nama diambil dari satu atau dua sifat yang paling jauh dari titik tengah. Skor lengkap kelima dimensi selalu ditampilkan, dan skor itulah yang dipakai untuk memahami hasil.</p>
+    </section>
+
+    <section id="organisasi">
+      <h2>Pemakaian oleh perusahaan dan HR</h2>
+      <p>Gangsal adalah tes laporan diri (self-report), bukan pemeriksaan psikologis. Kode Etik Psikologi Indonesia menyatakan laporan hasil pemeriksaan psikologis beserta saran dan rekomendasinya hanya dapat dibuat oleh Psikolog <span class="cite">[6, Pasal 62 ayat 2]</span>, dan asesmen perlu dilakukan oleh pihak yang berkualifikasi <span class="cite">[6, Pasal 63 ayat 5]</span>. Karena itu:</p>
+      <ul>
+        <li>jangan jadikan hasil Gangsal satu-satunya dasar keputusan penerimaan, promosi, atau penilaian kerja;</li>
+        <li>untuk keputusan seleksi, libatkan psikolog yang menafsirkan hasil bersama informasi lain;</li>
+        <li>pertimbangkan bahasa, budaya, dan keadaan peserta saat menafsirkan hasil <span class="cite">[6, Pasal 65]</span>;</li>
+        <li>peserta diminta persetujuannya sebelum mengerjakan tes <span class="cite">[6, Pasal 64]</span>.</li>
+      </ul>
+    </section>
+
+    <section id="data">
+      <h2>Data pribadi</h2>
+      <p>Tes umum tidak meminta nama atau email; yang disimpan hanya jawaban anonim. Pada undangan, nama peserta adalah data pribadi menurut UU Nomor 27 Tahun 2022 <span class="cite">[10]</span>. Pembuat undangan menentukan tujuan pemakaian data, jadi ia bertanggung jawab sebagai pengendali data terhadap pesertanya.</p>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th scope="col">Ketentuan UU PDP</th><th scope="col">Yang dilakukan Gangsal</th></tr></thead>
+        <tbody>
+          <tr><td>Pasal 22: persetujuan tertulis atau terekam</td><td>Peserta menyetujui teks persetujuan sebelum mulai; versi teks itu disimpan bersama hasilnya.</td></tr>
+          <tr><td>Pasal 16 dan 27: pemrosesan terbatas, spesifik, dan transparan</td><td>Teks persetujuan menyebut data yang dikirim, penerimanya, dan lama penyimpanan. Data hanya nama, jawaban, dan skor.</td></tr>
+          <tr><td>Pasal 8 dan 43: hak menghapus, kewajiban menghapus atas permintaan</td><td>Pembuat undangan bisa menghapus data satu peserta atau seluruh undangan dari halaman rekap.</td></tr>
+          <tr><td>Pasal 43: menghapus data yang tidak lagi diperlukan</td><td>Data per peserta dihapus otomatis 90 hari setelah batas waktu undangan.</td></tr>
+          <tr><td>Pasal 16: melindungi keamanan data</td><td>Nama dienkripsi di perangkat peserta dan hanya bisa dibuka dengan link rekap pembuat; pengelola Gangsal tidak bisa membacanya.</td></tr>
+          <tr><td>Pasal 40 dan 45: menghentikan pemrosesan saat persetujuan ditarik, memberi tahu penghapusan</td><td>Menjadi tanggung jawab pembuat undangan: hapus data peserta yang menarik persetujuan, lalu beri tahu peserta itu.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="rujukan">
+      <h2>Rujukan</h2>
+      <ol class="refs">
+        <li>Akhtar, H., &amp; Azwar, S. (2018). Development and validation of a short scale for measuring Big Five personality traits: The IPIP-BFM-25 Indonesia. <i>Journal of Innovation in Psychology, Education and Didactics, 22</i>(2), 167–174.</li>
+        <li>Akhtar, H., &amp; Azwar, S. (2019). Indonesian adaptation and psychometric properties evaluation of the Big Five Personality Inventory: IPIP-BFM-50. <i>Jurnal Psikologi, 46</i>(1), 32–44. <a href="https://doi.org/10.22146/jpsi.33571" rel="noopener" target="_blank">https://doi.org/10.22146/jpsi.33571</a></li>
+        <li>Goldberg, L. R. (1992). The development of markers for the Big-Five factor structure. <i>Psychological Assessment, 4</i>(1), 26–42. <a href="https://doi.org/10.1037/1040-3590.4.1.26" rel="noopener" target="_blank">https://doi.org/10.1037/1040-3590.4.1.26</a></li>
+        <li>Goldberg, L. R., Johnson, J. A., Eber, H. W., Hogan, R., Ashton, M. C., Cloninger, C. R., &amp; Gough, H. G. (2006). The International Personality Item Pool and the future of public-domain personality measures. <i>Journal of Research in Personality, 40</i>(1), 84–96. <a href="https://doi.org/10.1016/j.jrp.2005.08.007" rel="noopener" target="_blank">https://doi.org/10.1016/j.jrp.2005.08.007</a></li>
+        <li>International Personality Item Pool. Administering IPIP measures; Converting IPIP item responses to scale scores; Interpreting individual IPIP scale scores. <a href="https://ipip.ori.org" rel="noopener" target="_blank">https://ipip.ori.org</a></li>
+        <li>Himpunan Psikologi Indonesia. (2010). <i>Kode Etik Psikologi Indonesia</i>. Pengurus Pusat HIMPSI. <a href="https://himpsi.or.id/kode-etik" rel="noopener" target="_blank">https://himpsi.or.id/kode-etik</a></li>
+        <li>International Test Commission. (2017). <i>The ITC Guidelines for Translating and Adapting Tests</i> (2nd ed.). <a href="https://www.intestcom.org" rel="noopener" target="_blank">https://www.intestcom.org</a></li>
+        <li>McCrae, R. R., &amp; John, O. P. (1992). An introduction to the five-factor model and its applications. <i>Journal of Personality, 60</i>(2), 175–215. <a href="https://doi.org/10.1111/j.1467-6494.1992.tb00970.x" rel="noopener" target="_blank">https://doi.org/10.1111/j.1467-6494.1992.tb00970.x</a></li>
+        <li>Cohen, P., Cohen, J., Aiken, L. S., &amp; West, S. G. (1999). The problem of units and the circumstance for POMP. <i>Multivariate Behavioral Research, 34</i>(3), 315–346. <a href="https://doi.org/10.1207/S15327906MBR3403_2" rel="noopener" target="_blank">https://doi.org/10.1207/S15327906MBR3403_2</a></li>
+        <li>Undang-Undang Republik Indonesia Nomor 27 Tahun 2022 tentang Pelindungan Data Pribadi. Lembaran Negara Tahun 2022 Nomor 196. <a href="https://peraturan.bpk.go.id/Details/229798/uu-no-27-tahun-2022" rel="noopener" target="_blank">https://peraturan.bpk.go.id/Details/229798/uu-no-27-tahun-2022</a></li>
+      </ol>
+    </section>
+  </article>`;
+  if (location.hash.length > 1){ const t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+  if (NORMS === null) loadNorms().then(()=>{ if (location.pathname === "/metode") viewMethod(); });
+}
+
 /* ---------- tema ---------- */
 const THEMES = ["system","light","dark"];
 const THEME_TXT = {system:"Sistem", light:"Terang", dark:"Gelap"};
@@ -912,6 +1057,7 @@ function route(){
   const im = /^\/([ir])\/([a-z0-9]{8})$/.exec(p);
   if (im) return im[1]==="i" ? viewInviteJoin(im[2]) : viewInviteRecap(im[2]);
   if (p === "/undang") return viewInviteCreate();
+  if (p === "/metode") return viewMethod();
   if (mode) setMode(null);
   if (p.startsWith("/h/")){
     const code = decodeURIComponent(p.slice(3));
@@ -935,3 +1081,4 @@ $("#themeBtn").onclick = ()=>{ const t = THEMES[(THEMES.indexOf(currentTheme())+
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", ()=>applyTheme(currentTheme()));
 applyTheme(currentTheme());
 route();
+loadNorms();

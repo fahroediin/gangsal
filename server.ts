@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync, statSync, chmodSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join, normalize, dirname, sep } from "node:path";
-import { ITEMS, DIMS, score, level, decode, persona } from "./public/core.js";
+import { ITEMS, DIMS, score, level, decode, persona, normsReady, CONSENT_VERSION } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 import { ogPNG, ogCached } from "./og.ts";
 
@@ -55,13 +55,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS invite_results (
   UNIQUE(code, cid)
 )`);
 db.exec("CREATE INDEX IF NOT EXISTS invite_results_code ON invite_results(code)");
+// Versi teks persetujuan yang disetujui peserta (UU PDP Pasal 22: persetujuan tertulis atau terekam).
+try { db.exec("ALTER TABLE invite_results ADD COLUMN consent TEXT"); } catch { /* kolom sudah ada */ }
 const inviteInsert = db.prepare(`INSERT INTO invites (code,pub,title_iv,title_ct,admin_hash,max_participants,created_at,expires_at)
   VALUES ($code,$pub,$tiv,$tct,$hash,$max,$now,$exp)`);
 const inviteGet = db.prepare("SELECT * FROM invites WHERE code = $code");
 const inviteCount = db.prepare("SELECT COUNT(*) AS n FROM invite_results WHERE code = $code");
-const inviteResultInsert = db.prepare(`INSERT INTO invite_results (code,cid,name_epk,name_iv,name_ct,e,a,c,s,i,created_at)
-  VALUES ($code,$cid,$epk,$iv,$ct,$e,$a,$c,$s,$i,$now)`);
-const inviteRows = db.prepare("SELECT name_epk,name_iv,name_ct,e,a,c,s,i,created_at FROM invite_results WHERE code = $code ORDER BY id");
+const inviteResultInsert = db.prepare(`INSERT INTO invite_results (code,cid,name_epk,name_iv,name_ct,e,a,c,s,i,created_at,consent)
+  VALUES ($code,$cid,$epk,$iv,$ct,$e,$a,$c,$s,$i,$now,$consent)`);
+const inviteRows = db.prepare("SELECT id,name_epk,name_iv,name_ct,e,a,c,s,i,created_at,consent FROM invite_results WHERE code = $code ORDER BY id");
+const inviteRowDel = db.prepare("DELETE FROM invite_results WHERE code = $code AND id = $id");
 const inviteDelRows = db.prepare("DELETE FROM invite_results WHERE code = $code");
 const inviteDel = db.prepare("DELETE FROM invites WHERE code = $code");
 const cleanupRows = db.prepare("DELETE FROM invite_results WHERE code IN (SELECT code FROM invites WHERE expires_at < $cut)");
@@ -192,12 +195,21 @@ function stats(): string {
   const rows = allScores.all() as Record<string, number>[];
   const map: Record<string, string> = { E: "e", A: "a", C: "c", S: "s", I: "i" };
   const avg: Record<string, number> = {}, levels: Record<string, Record<string, number>> = {};
+  // Norma sampel sendiri (rata-rata dan simpangan baku sampel), sesuai saran IPIP.
+  const norms: Record<string, any> = { n: rows.length };
+  for (const d of DIMS) {
+    const vals = rows.map((r) => r[map[d.key]]);
+    const mean = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : 50;
+    const sd = vals.length > 1 ? Math.sqrt(vals.reduce((t, v) => t + (v - mean) ** 2, 0) / (vals.length - 1)) : 0;
+    norms[d.key] = { mean: Math.round(mean * 10) / 10, sd: Math.round(sd * 10) / 10 };
+  }
+  const ready = normsReady(norms);
   for (const d of DIMS) {
     const col = map[d.key];
     const vals = rows.map((r) => r[col]);
     avg[d.key] = vals.length ? Math.round(vals.reduce((x, y) => x + y, 0) / vals.length) : 50;
     levels[d.key] = { rendah: 0, sedang: 0, tinggi: 0 };
-    for (const v of vals) levels[d.key][level(v)]++;
+    for (const v of vals) levels[d.key][level(v, ready ? norms[d.key] : null)]++;
   }
   // Kelompok per karakter (persona): jumlah peserta dan rata-rata skor tiap kelompok.
   const groups = new Map<string, { n: number; sum: Record<string, number> }>();
@@ -211,7 +223,7 @@ function stats(): string {
   const personas = [...groups].map(([name, g]) => ({
     name, n: g.n, avg: Object.fromEntries(Object.entries(g.sum).map(([k, v]) => [k, Math.round(v / g.n)])),
   })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
-  const body = JSON.stringify({ total: rows.length, avg, levels, personas });
+  const body = JSON.stringify({ total: rows.length, avg, levels, personas, norms, normsReady: ready });
   statsCache = { at: Date.now(), body };
   return body;
 }
@@ -328,6 +340,17 @@ async function handle(req: Request, ip: string): Promise<Response> {
     inviteInsert.run({ ...v.row, $code: code } as any);
     return json(JSON.stringify({ code, expiresAt: v.row.$exp }), 201);
   }
+  // Hapus data satu peserta atas permintaan peserta itu (UU PDP Pasal 8 dan 43), oleh pemegang link rekap.
+  const dm = /^\/api\/invites\/([a-z0-9]{8})\/results\/(\d{1,12})$/.exec(path);
+  if (dm) {
+    if (req.method !== "DELETE") return json('{"error":"method"}', 405, { Allow: "DELETE" });
+    if (LIMITS.adminIp(ip)) return tooMany(600);
+    const inv = inviteGet.get({ $code: dm[1] }) as any;
+    if (!inv) return json('{"error":"not_found"}', 404);
+    if (!adminOk(inv, req.headers.get("x-admin-token"))) return json('{"error":"forbidden"}', 403);
+    const r = inviteRowDel.run({ $code: inv.code, $id: Number(dm[2]) });
+    return r.changes ? json('{"ok":true}') : json('{"error":"not_found"}', 404);
+  }
   const im = /^\/api\/invites\/([a-z0-9]{8})(\/results)?$/.exec(path);
   if (im) {
     if (!CODE_RE.test(im[1])) return json('{"error":"not_found"}', 404);
@@ -349,8 +372,9 @@ async function handle(req: Request, ip: string): Promise<Response> {
       if (LIMITS.adminIp(ip)) return tooMany(600);
       if (!adminOk(inv, req.headers.get("x-admin-token"))) return json('{"error":"forbidden"}', 403);
       const rows = (inviteRows.all({ $code: inv.code }) as any[]).map((r) => ({
+        id: r.id,
         name: { epk: r.name_epk, iv: r.name_iv, ct: r.name_ct },
-        scores: { E: r.e, A: r.a, C: r.c, S: r.s, I: r.i }, at: r.created_at,
+        scores: { E: r.e, A: r.a, C: r.c, S: r.s, I: r.i }, at: r.created_at, consent: r.consent ?? null,
       }));
       return json(JSON.stringify({ invite: { ...publicInvite(inv, now), maxParticipants: inv.max_participants }, rows }));
     }
@@ -364,6 +388,7 @@ async function handle(req: Request, ip: string): Promise<Response> {
     const v = validate(body);
     if (!v.ok) return json(JSON.stringify({ error: v.error }), 400);
     if (!validName(body.name)) return json('{"error":"name"}', 400);
+    if (body.consent !== CONSENT_VERSION) return json('{"error":"consent"}', 400);
     if (now >= inv.expires_at) return json('{"error":"expired"}', 410);
     const pub = publicInvite(inv, now);
     if (pub.full) return json('{"error":"full"}', 409);
@@ -371,7 +396,7 @@ async function handle(req: Request, ip: string): Promise<Response> {
     try {
       db.transaction(() => {
         inviteResultInsert.run({ $code: inv.code, $cid: body.cid, $epk: body.name.epk, $iv: body.name.iv, $ct: body.name.ct,
-          $e: v.scores.E, $a: v.scores.A, $c: v.scores.C, $s: v.scores.S, $i: v.scores.I, $now: now });
+          $e: v.scores.E, $a: v.scores.A, $c: v.scores.C, $s: v.scores.S, $i: v.scores.I, $now: now, $consent: CONSENT_VERSION });
         upsert.run(v.row as any);   // skor anonim juga masuk rekap umum
       })();
     } catch (e: any) {
@@ -386,7 +411,7 @@ async function handle(req: Request, ip: string): Promise<Response> {
   if (req.method !== "GET" && req.method !== "HEAD") return text("Method Not Allowed", 405, { Allow: "GET, HEAD" });
 
   // Halaman aplikasi untuk membuat undangan, mengisi undangan, dan rekap pembuat.
-  if (path === "/undang" || /^\/i\/[a-z0-9]{8}$/.test(path) || /^\/r\/[a-z0-9]{8}$/.test(path)) {
+  if (path === "/undang" || path === "/metode" || /^\/i\/[a-z0-9]{8}$/.test(path) || /^\/r\/[a-z0-9]{8}$/.test(path)) {
     const priv = path.startsWith("/r/");
     return new Response(INDEX_HTML, { headers: {
       "Content-Type": "text/html; charset=utf-8", "Cache-Control": priv ? "no-store" : "no-cache", ...SECURITY,

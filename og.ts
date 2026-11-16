@@ -1,6 +1,6 @@
 // Gambar pratinjau tautan (Open Graph) 1200x630 per hasil, dirender ke PNG di server.
 import { Resvg } from "@resvg/resvg-js";
-import { DIMS, level, persona } from "./public/core.js";
+import { DIMS, persona } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 
 // Liberation Sans ada di AlmaLinux bawaan; Arial untuk Windows/macOS saat pengembangan.
@@ -14,8 +14,9 @@ export function ogSVG(s: Record<string, number>, host: string): string {
   const name = persona(s as any);
   const bx = 600, bw = 520;
   const rows = DIMS.map((d, i) => {
-    const v = s[d.key], y = 230 + i * 74, lv = level(v);
-    const fill = lv === "rendah" ? "#A9502A" : "#1B6A55";
+    // Satu warna untuk semua bar: gambar pratinjau tidak memberi label tingkat (tingkat butuh norma sampel).
+    const v = s[d.key], y = 230 + i * 74;
+    const fill = "#1B6A55";
     return `<text x="${bx}" y="${y}" font-family="${FONT}" font-size="26" font-weight="600" fill="#141B18">${esc(d.name)}</text>
 <text x="${bx + bw}" y="${y}" text-anchor="end" font-family="${FONT}" font-size="26" font-weight="700" fill="#141B18">${v}</text>
 <rect x="${bx}" y="${y + 14}" width="${bw}" height="16" rx="8" fill="#DCE3E0"/>
