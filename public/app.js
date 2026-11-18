@@ -1188,12 +1188,14 @@ const DICON = {
   copy: ["M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"],
   check: ["M20 6 9 17l-5-5"],
 };
+// mailto: hanya jalan bila perangkat punya aplikasi email bawaan; Gmail compose selalu terbuka di browser.
+const gmailUrl = () => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(EMAIL)}&su=${encodeURIComponent(L("Donasi Gangsal","Gangsal donation"))}`;
 function renderDonate(copied = false){
   $("#donatePanel").innerHTML = `
     <p class="donate-note">${L("Gangsal gratis, tanpa iklan, dan tanpa akun. Kalau bermanfaat, kamu bisa membantu biaya server.","Gangsal is free, with no ads and no account. If it helps you, you can chip in for the server costs.")}</p>
     <a class="dpill primary" href="${SPONSORS}" target="_blank" rel="noopener noreferrer">${LINE(DICON.heart)}<span>GitHub Sponsors</span></a>
     <div class="dpill-row">
-      <a class="dpill" href="mailto:${EMAIL}?subject=${encodeURIComponent(L("Donasi Gangsal","Gangsal donation"))}">${LINE(DICON.mail)}<span>${L("Kirim email","Send email")}</span></a>
+      <a class="dpill" href="${gmailUrl()}" target="_blank" rel="noopener noreferrer">${LINE(DICON.mail)}<span>${L("Kirim email","Send email")}</span></a>
       <button class="dpill${copied ? " done" : ""}" type="button" id="copyEmail" aria-live="polite">${LINE(copied ? DICON.check : DICON.copy)}<span>${copied ? L("Tersalin","Copied") : L("Salin email","Copy email")}</span></button>
     </div>`;
   $("#copyEmail").onclick = async ()=>{
