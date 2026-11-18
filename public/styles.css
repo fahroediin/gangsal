@@ -54,7 +54,7 @@ main:focus{outline:none}
 .nav-btn:hover{color:var(--ink);background:var(--soft)}
 .nav-btn[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -3px 0 var(--ink);border-radius:10px 10px 0 0}
 .nav-btn.theme{font-weight:400}
-@media (max-width:640px){.nav-btn.theme span{display:none}.top-in{flex-wrap:nowrap}.nav-btn{padding:0 11px}}
+@media (max-width:640px){.nav-btn.theme span,.donate-btn span{display:none}.top-in{flex-wrap:nowrap}.nav-btn{padding:0 11px}}
 @media (max-width:380px){.brand span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}}
 @media (max-width:420px){
   .nav-btn{padding:0 7px}.nav-btn.theme span{display:none}
@@ -63,6 +63,27 @@ main:focus{outline:none}
 }
 /* layar pendek (ponsel landscape): header tidak menempel agar ruang layar utuh */
 @media (max-height:500px){.top{position:static}.top-in{min-height:56px}}
+
+/* donasi */
+.donate{position:relative}
+.in-quiz .donate{display:none}
+.donate-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:min(340px, calc(100vw - 36px));
+  background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,.14)}
+.donate-note{font-size:.98rem;color:var(--muted);margin:0 0 2px}
+.dpill{appearance:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 16px;
+  border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:1rem;font-weight:700;text-decoration:none}
+.dpill:hover{border-color:var(--ink)}
+.dpill.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-ink)}
+.dpill.done{border-color:var(--ok);color:var(--ok)}
+.dpill-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dpill span{white-space:nowrap}
+@media (max-width:420px){.dpill-row{grid-template-columns:1fr}}
+@media (max-width:640px){
+  .donate-panel{position:fixed;width:auto;left:max(18px, env(safe-area-inset-left, 0px));right:max(18px, env(safe-area-inset-right, 0px));
+    top:calc(env(safe-area-inset-top, 0px) + 66px)}
+}
+@media (max-height:500px) and (max-width:640px){.donate-panel{position:absolute}}
 
 /* tombol */
 .btn{appearance:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:10px;

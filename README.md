@@ -139,3 +139,7 @@ The code is released under the [MIT License](LICENSE), except `public/items-id.j
 
 - `public/items-id.js` contains the Indonesian item wording from Akhtar & Azwar (2019), *Jurnal Psikologi* 46(1), 32-44, https://doi.org/10.22146/jpsi.33571, and is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), following the source article. Changes to that file must keep the same license.
 - The original English items are the IPIP Big-Five Factor Markers (Goldberg, 1992), in the public domain.
+
+## Support
+
+Gangsal is free to use. If it helps you, you can support it through [GitHub Sponsors](https://github.com/sponsors/fahroediin).

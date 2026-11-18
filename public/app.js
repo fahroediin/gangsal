@@ -233,6 +233,9 @@ function viewIntro(){
 function viewTest(){
   setNav("test"); setTitle(`Pernyataan ${qi+1} dari ${TOTAL}`);
   quizActive = true;
+  // tombol donasi disembunyikan selama tes agar layar fokus (seperti Riuh saat soal berjalan)
+  document.body.classList.add("in-quiz");
+  if (!$("#donatePanel").hidden) setDonate(false);
   clearTimeout(advanceTimer);
   const [text] = ITEMS[qi];
   const done = answeredCount();
@@ -1032,6 +1035,47 @@ function viewMethod(){
   if (NORMS === null) loadNorms().then(()=>{ if (location.pathname === "/metode") viewMethod(); });
 }
 
+/* ---------- donasi ---------- */
+// Sama dengan Riuh: GitHub Sponsors sebagai pilihan utama, lalu email.
+// Alamat email dirakit di sini agar tidak tertulis utuh di HTML untuk pemanen email.
+const EMAIL = ["imam.fahrudin.work", "gmail.com"].join("@");
+const SPONSORS = "https://github.com/sponsors/fahroediin";
+const LINE = d => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d.map(p=>`<path d="${p}"/>`).join("")}</svg>`;
+const DICON = {
+  heart: ["M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"],
+  mail: ["M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"],
+  copy: ["M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"],
+  check: ["M20 6 9 17l-5-5"],
+};
+function renderDonate(copied = false){
+  $("#donatePanel").innerHTML = `
+    <p class="donate-note">Gangsal gratis, tanpa iklan, dan tanpa akun. Kalau bermanfaat, kamu bisa membantu biaya server.</p>
+    <a class="dpill primary" href="${SPONSORS}" target="_blank" rel="noopener noreferrer">${LINE(DICON.heart)}<span>GitHub Sponsors</span></a>
+    <div class="dpill-row">
+      <a class="dpill" href="mailto:${EMAIL}?subject=${encodeURIComponent("Donasi Gangsal")}">${LINE(DICON.mail)}<span>Kirim email</span></a>
+      <button class="dpill${copied ? " done" : ""}" type="button" id="copyEmail" aria-live="polite">${LINE(copied ? DICON.check : DICON.copy)}<span>${copied ? "Tersalin" : "Salin email"}</span></button>
+    </div>`;
+  $("#copyEmail").onclick = async ()=>{
+    try { await navigator.clipboard.writeText(EMAIL); }
+    catch(e){
+      const ta = document.createElement("textarea"); ta.value = EMAIL; ta.className = "sr-only"; ta.readOnly = true;
+      document.body.append(ta); ta.select(); try { document.execCommand("copy"); } catch(_){} ta.remove();
+    }
+    renderDonate(true); $("#copyEmail").focus();
+    setTimeout(()=>{ if (!$("#donatePanel").hidden) renderDonate(false); }, 2000);
+  };
+}
+function setDonate(open){
+  const panel = $("#donatePanel"), btn = $("#donateBtn");
+  if (open) renderDonate();
+  panel.hidden = !open;
+  btn.setAttribute("aria-expanded", String(open));
+  if (open) panel.querySelector("a")?.focus();
+}
+$("#donateBtn").onclick = ()=>setDonate($("#donatePanel").hidden);
+document.addEventListener("click", e=>{ if (!$("#donatePanel").hidden && !e.target.closest("#donate")) setDonate(false); });
+document.addEventListener("keydown", e=>{ if (e.key === "Escape" && !$("#donatePanel").hidden){ setDonate(false); $("#donateBtn").focus(); } });
+
 /* ---------- tema ---------- */
 const THEMES = ["system","light","dark"];
 const THEME_TXT = {system:"Sistem", light:"Terang", dark:"Gelap"};
@@ -1054,6 +1098,8 @@ function applyTheme(t){
 /* ---------- routing ---------- */
 function route(){
   const p = location.pathname, h = location.hash.slice(1);
+  document.body.classList.remove("in-quiz");
+  if (!$("#donatePanel").hidden) setDonate(false);
   const im = /^\/([ir])\/([a-z0-9]{8})$/.exec(p);
   if (im) return im[1]==="i" ? viewInviteJoin(im[2]) : viewInviteRecap(im[2]);
   if (p === "/undang") return viewInviteCreate();
