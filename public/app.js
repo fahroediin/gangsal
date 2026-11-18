@@ -1180,10 +1180,10 @@ function methodEN(n){
 }
 
 /* ---------- donasi ---------- */
-// Sama dengan Riuh: GitHub Sponsors sebagai pilihan utama, lalu email.
+// Saweria sebagai pilihan utama (bisa QRIS, e-wallet, transfer), lalu email.
 // Alamat email dirakit di sini agar tidak tertulis utuh di HTML untuk pemanen email.
 const EMAIL = ["imam.fahrudin.work", "gmail.com"].join("@");
-const SPONSORS = "https://github.com/sponsors/fahroediin";
+const SAWERIA = "https://saweria.co/ifahrudin";
 const LINE = d => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d.map(p=>`<path d="${p}"/>`).join("")}</svg>`;
 const DICON = {
   heart: ["M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"],
@@ -1196,7 +1196,7 @@ const gmailUrl = () => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeUR
 function renderDonate(copied = false){
   $("#donatePanel").innerHTML = `
     <p class="donate-note">${L("Gangsal gratis, tanpa iklan, dan tanpa akun. Kalau bermanfaat, kamu bisa membantu biaya server.","Gangsal is free, with no ads and no account. If it helps you, you can chip in for the server costs.")}</p>
-    <a class="dpill primary" href="${SPONSORS}" target="_blank" rel="noopener noreferrer">${LINE(DICON.heart)}<span>GitHub Sponsors</span></a>
+    <a class="dpill primary" href="${SAWERIA}" target="_blank" rel="noopener noreferrer">${LINE(DICON.heart)}<span>${L("Dukung lewat Saweria","Support on Saweria")}</span></a>
     <div class="dpill-row">
       <a class="dpill" href="${gmailUrl()}" target="_blank" rel="noopener noreferrer">${LINE(DICON.mail)}<span>${L("Kirim email","Send email")}</span></a>
       <button class="dpill${copied ? " done" : ""}" type="button" id="copyEmail" aria-live="polite">${LINE(copied ? DICON.check : DICON.copy)}<span>${copied ? L("Tersalin","Copied") : L("Salin email","Copy email")}</span></button>

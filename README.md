@@ -143,4 +143,4 @@ The code is released under the [MIT License](LICENSE), except `public/items-id.j
 
 ## Support
 
-Gangsal is free to use. If it helps you, you can support it through [GitHub Sponsors](https://github.com/sponsors/fahroediin).
+Gangsal is free to use. If it helps you, you can support it through [Saweria](https://saweria.co/ifahrudin).
