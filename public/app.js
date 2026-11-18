@@ -165,7 +165,7 @@ function viewIntro(){
       <p class="lede">Jawab 50 pernyataan singkat. Kamu mendapat skor lima dimensi kepribadian Big Five dan karakter animasi yang bentuknya mengikuti skormu.</p>
       <div class="facts">
         <span><b class="num">50</b> pernyataan</span><span><b class="num">8</b> menit</span>
-        <span class="live" aria-live="polite"><b class="num" id="liveCount">${liveTotal === null ? "..." : fmtNum(liveTotal)}</b> orang sudah ikut <a href="#rekap">lihat sebarannya</a></span>
+        <span class="live" aria-live="polite"><b class="num" id="liveCount">${liveTotal === null ? "..." : fmtNum(liveTotal)}</b> orang sudah ikut <a href="#rekap">lihat rekapnya</a></span>
       </div>
       <div class="row">
         <button class="btn primary" id="start" type="button">${n ? `Lanjutkan, sudah ${n} dari ${TOTAL}` : "Mulai tes"}</button>
@@ -175,14 +175,27 @@ function viewIntro(){
     </div>
     <div class="home-art">${pentaFrame(SAMPLE)}</div>
   </section>
+  <section class="hrecap" id="rekap" aria-labelledby="recapTitle" tabindex="-1">
+    <div class="hrecap-head">
+      <h2 id="recapTitle">Rekap peserta</h2>
+      <span class="hint">Diperbarui otomatis setiap 30 detik</span>
+    </div>
+    <div id="recapBody"></div>
+  </section>
   <section class="catalog" aria-labelledby="catTitle">
     <div class="catalog-head">
-      <h2 id="catTitle">Karakter yang bisa kamu dapat</h2>
-      <p class="note" style="margin-top:0">Nama karakter diambil dari sifat yang paling menonjol, misalnya <i>Si Perancang yang Hangat</i>. Karakter adalah ilustrasi, bukan tipe kepribadian. <a href="/metode#karakter">Kenapa</a>.</p>
+      <div class="cat-title-row">
+        <h2 id="catTitle">Karakter</h2>
+        <div class="seg" role="group" aria-label="Pilih daftar karakter">
+          <button type="button" class="seg-btn" data-tab="peserta" aria-pressed="false">Karakter peserta</button>
+          <button type="button" class="seg-btn" data-tab="semua" aria-pressed="false">Semua karakter</button>
+        </div>
+      </div>
+      <p class="note" style="margin-top:0" id="catNote"></p>
       ${OCEAN_LEGEND}
     </div>
-    <ul class="plist collapsed" id="catList">${basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`)).join("")}</ul>
-    <div class="cat-more"><button class="btn" type="button" id="catMore" aria-controls="catList" aria-expanded="false">Lihat ${basePersonas().length - 6} karakter lainnya</button></div>
+    <ul class="plist collapsed" id="catList"></ul>
+    <div class="cat-more"><button class="btn" type="button" id="catMore" aria-controls="catList" aria-expanded="false"></button></div>
   </section>
   <section class="teams" aria-labelledby="teamsTitle">
     <div class="teams-copy">
@@ -201,11 +214,11 @@ function viewIntro(){
   </section>`;
   $("#toInvite").onclick = ()=>nav("/undang");
   $("#catMore").onclick = ()=>{
-    const list = $("#catList"), open = list.classList.toggle("collapsed") === false;
-    $("#catMore").setAttribute("aria-expanded", String(open));
-    $("#catMore").textContent = open ? "Tampilkan lebih sedikit" : `Lihat ${basePersonas().length - 6} karakter lainnya`;
-    if (!open) $("#catTitle").scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" });
+    catOpen = !catOpen; renderCatalog();
+    if (!catOpen) $("#catTitle").scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" });
   };
+  document.querySelectorAll(".seg-btn").forEach(b=>b.onclick = ()=>{ catTab = b.dataset.tab; catOpen = false; renderCatalog(); });
+  renderHomeRecap();
   if ($("#toTeams")) $("#toTeams").onclick = ()=>{ $(".teams").scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block:"start"}); $("#teamsTitle").setAttribute("tabindex","-1"); $("#teamsTitle").focus({preventScroll:true}); };
   refreshLive();
   $("#joinForm").onsubmit = e=>{
@@ -475,64 +488,75 @@ async function loadRecap(){
   }catch(e){ if (recap === null) recapErr = "Rekap belum bisa dimuat. Halaman ini akan mencoba lagi otomatis."; }
   finally{ clearTimeout(timer); loadingStats = false; }
   const el = $("#liveCount"); if (el && liveTotal !== null) el.textContent = fmtNum(liveTotal);
-  if (location.pathname === "/" && location.hash === "#rekap"){ const y = scrollY; viewRecap(); scrollTo(0, y); }
+  renderHomeRecap();
 }
 const refreshLive = loadRecap;
 const onLivePage = () => location.pathname === "/" && (location.hash === "" || location.hash === "#rekap");
 setInterval(()=>{ if (!document.hidden && onLivePage()) loadRecap(); }, 30_000);
 document.addEventListener("visibilitychange", ()=>{ if (!document.hidden && onLivePage()) loadRecap(); });
 
-function viewRecap(){
-  setNav("recap"); setTitle("Rekap peserta");
-  if (recap===null && !recapErr) loadRecap();
-  let body;
-  if (recapErr) body = `<div class="empty">${recapErr}</div>`;
-  else if (recap===null) body = `<div class="empty">Memuat rekap peserta...</div>`;
-  else if (!recap.total) body = `<div class="empty">Belum ada peserta. Jadilah yang pertama, lalu hasilmu akan muncul di sini.</div>`;
+/* rekap di beranda: tidak ada halaman terpisah; bagian #rekap diisi ulang setiap data baru masuk */
+const LV = [["rendah","var(--soft)","var(--muted)"],["sedang","var(--line)","var(--ink)"],["tinggi","var(--ink)","var(--primary-ink)"]];
+let catTab = null, catOpen = false;
+function renderHomeRecap(){
+  const box = $("#recapBody"); if (!box) return;
+  // Data sama dengan yang sudah tampil: jangan gambar ulang (animasi dan posisi geser tidak terulang).
+  const key = JSON.stringify([recap, recapErr]);
+  if (box.childElementCount && box.dataset.key === key) return;
+  box.dataset.key = key;
+  if (recapErr && recap === null) box.innerHTML = `<div class="empty">${recapErr}</div>`;
+  else if (recap === null) box.innerHTML = `<div class="empty">Memuat rekap peserta...</div>`;
+  else if (!recap.total) box.innerHTML = `<div class="empty">Belum ada peserta. Jadilah yang pertama, lalu hasilmu akan muncul di sini.</div>`;
   else {
-    const n = recap.total, name = persona(recap.avg);
-    const LV = [["rendah","var(--soft)","var(--muted)"],["sedang","var(--line)","var(--ink)"],["tinggi","var(--ink)","var(--primary-ink)"]];
-    body = `
-      <section class="result" style="margin-top:8px">
+    const n = recap.total;
+    box.innerHTML = `
+    <div class="hrecap-grid">
+      <div class="hrecap-avg">
         <div class="stage">${characterSVG(recap.avg, {title:"Karakter rata-rata peserta"})}</div>
-        <div class="result-copy">
-          <p class="who">Kalau semua peserta digabung jadi satu karakter, hasilnya</p>
-          <h1>${name}</h1>
-          <p class="lede"><span class="big-count num">${n}</span> peserta sudah ikut tes.</p>
-        </div>
-      </section>
-      <section class="profile">
         <div>
-          <h2 style="margin-bottom:12px">Rata-rata skor</h2>
-          ${radar(recap.avg, "Rata-rata skor peserta")}
+          <p class="who">Semua peserta digabung jadi satu karakter:</p>
+          <p class="hrecap-name">${esc(persona(recap.avg))}</p>
+          <p class="hrecap-count"><b class="num">${fmtNum(n)}</b> peserta</p>
         </div>
-        <div>
-          <h2 style="margin-bottom:18px">Sebaran tingkat</h2>
-          <div class="levels">${DIMS.map(d=>{ const b = recap.levels[d.key]; return `
-            <div class="lv-row"><b>${d.name}</b>
-              <div class="lv-bar" role="img" aria-label="${d.name}: rendah ${b.rendah} orang, sedang ${b.sedang} orang, tinggi ${b.tinggi} orang">
-                ${LV.map(([l,bg,fg])=>b[l]?`<i style="width:${b[l]/n*100}%;background:${bg};color:${fg}">${Math.round(b[l]/n*100)}%</i>`:"").join("")}
-              </div></div>`;}).join("")}
-          </div>
-          <div class="lv-legend" style="margin-top:16px">${LV.map(([l,bg])=>`<span><i style="background:${bg};border:1px solid var(--line)"></i>${l[0].toUpperCase()+l.slice(1)}</span>`).join("")}</div>
-          <p class="note">${levelBasisNote()}</p>
-          <p class="note">Satu hasil per perangkat. Tes ulang dari perangkat yang sama menimpa hasil lama.</p>
+      </div>
+      <div>
+        <div class="levels compact">${DIMS.map(d=>{ const b = recap.levels[d.key]; return `
+          <div class="lv-row"><span class="lv-label"><b>${d.name}</b><span>rata-rata <b class="num">${recap.avg[d.key]}</b></span></span>
+            <div class="lv-bar" role="img" aria-label="${d.name}: rata-rata ${recap.avg[d.key]}; rendah ${b.rendah} orang, sedang ${b.sedang} orang, tinggi ${b.tinggi} orang">
+              ${LV.map(([l,bg,fg])=>b[l]?`<i style="width:${b[l]/n*100}%;background:${bg};color:${fg}" title="${l} ${Math.round(b[l]/n*100)}%">${b[l]/n >= .2 ? Math.round(b[l]/n*100)+"%" : ""}</i>`:"").join("")}
+            </div></div>`;}).join("")}
         </div>
-      </section>
-      ${(recap.personas || []).length ? `<section class="catalog" aria-labelledby="pTitle">
-        <div class="catalog-head">
-          <h2 id="pTitle">Karakter para peserta</h2>
-          <p class="lede">${recap.personas.length} karakter berbeda dari ${n} peserta, diurutkan dari yang paling banyak. Persentase OCEAN adalah rata-rata peserta di karakter itu.</p>
-          ${OCEAN_LEGEND}
-        </div>
-        <ul class="plist">${recap.personas.map(p=>personaCard(p, `<span class="pmeta"><b class="num">${p.n}</b> peserta, ${Math.round(p.n/n*100)}%</span>`)).join("")}</ul>
-      </section>` : ""}`;
+        <div class="lv-legend" style="margin-top:12px">${LV.map(([l,bg])=>`<span><i style="background:${bg};border:1px solid var(--line)"></i>${l[0].toUpperCase()+l.slice(1)}</span>`).join("")}</div>
+        <p class="note">${levelBasisNote()} Satu hasil per perangkat.</p>
+      </div>
+    </div>`;
   }
-  $("#view").innerHTML = `
-    ${recap && recap.total ? "" : `<h1 style="margin-bottom:24px">Rekap peserta</h1>`}
-    ${body}
-    <div class="row" style="margin-top:32px"><button class="btn primary" id="toTest" type="button">Ikut tes</button><span class="hint">Angka di halaman ini diperbarui otomatis setiap 30 detik.</span></div>`;
-  $("#toTest").onclick = ()=>nav("/#tes");
+  renderCatalog();
+}
+function renderCatalog(){
+  const list = $("#catList"); if (!list) return;
+  const people = (recap && recap.personas) || [];
+  // Tab bawaan baru dikunci setelah data rekap tiba; sebelum itu tampilkan semua karakter.
+  if (!catTab && recap) catTab = people.length ? "peserta" : "semua";
+  if (catTab === "peserta" && !people.length) catTab = "semua";
+  const items = (catTab || "semua") === "peserta"
+    ? people.map(p=>personaCard(p, `<span class="pmeta"><b class="num">${p.n}</b> peserta, ${Math.round(p.n/recap.total*100)}%</span>`))
+    : basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`));
+  const x = list.scrollLeft;
+  list.innerHTML = items.join("");
+  list.scrollLeft = x;
+  list.classList.toggle("collapsed", !catOpen);
+  document.querySelectorAll(".seg-btn").forEach(b=>{
+    b.setAttribute("aria-pressed", String(b.dataset.tab === (catTab || "semua")));
+    if (b.dataset.tab === "peserta"){ b.disabled = !people.length; b.textContent = people.length ? `Karakter peserta (${people.length})` : "Karakter peserta"; }
+  });
+  $("#catNote").innerHTML = (catTab || "semua") === "peserta"
+    ? `Diurutkan dari yang paling banyak. Persentase OCEAN adalah rata-rata peserta di karakter itu. Karakter adalah ilustrasi, bukan tipe kepribadian. <a href="/metode#karakter">Kenapa</a>.`
+    : `Nama karakter diambil dari sifat yang paling menonjol, misalnya <i>Si Perancang yang Hangat</i>. Karakter adalah ilustrasi, bukan tipe kepribadian. <a href="/metode#karakter">Kenapa</a>.`;
+  const more = $("#catMore"), extra = items.length - 6;
+  more.parentElement.hidden = extra <= 0;
+  more.setAttribute("aria-expanded", String(catOpen));
+  more.textContent = catOpen ? "Tampilkan lebih sedikit" : `Lihat ${extra} karakter lainnya`;
 }
 
 /* ---------- undangan: daftar milik perangkat ini ---------- */
@@ -1114,12 +1138,12 @@ function route(){
     history.replaceState(null, "", "/");
   }
   if (h==="tes") viewTest();
-  else if (h==="rekap") viewRecap();
+  else if (h==="rekap"){ viewIntro(); requestAnimationFrame(()=>{ $("#rekap").scrollIntoView(); $("#rekap").focus({preventScroll:true}); }); }
   else if (h==="disclaimer"){ viewIntro(); $("#disclaimer").open = true; $("#disclaimer").scrollIntoView(); }
   else viewIntro();
 }
 window.addEventListener("popstate", route);
-window.addEventListener("hashchange", ()=>{ route(); if (location.hash!=="#disclaimer") window.scrollTo(0,0); });
+window.addEventListener("hashchange", ()=>{ route(); if (location.hash!=="#disclaimer" && location.hash!=="#rekap") window.scrollTo(0,0); });
 $("#brand").onclick = e=>{ e.preventDefault(); nav("/"); };
 document.querySelector(".skip").onclick = e=>{ e.preventDefault(); $("#view").focus(); };
 $("#navTest").onclick = ()=>nav("/#tes");
