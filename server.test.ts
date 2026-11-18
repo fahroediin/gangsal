@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ITEMS, DIMS, score, level, encode, decode, persona, basePersonas, OCEAN, ITEM_META, CONSENT_VERSION, normsReady, NORM_MIN_N } from "./public/core.js";
+import { ITEMS, DIMS, score, level, encode, decode, persona, personaKey, personaName, basePersonas, itemText, OCEAN, ITEM_META, CONSENT_VERSION, normsReady, NORM_MIN_N } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 
 const dbFile = join(tmpdir(), `gangsal-test-${Date.now()}.sqlite`);
@@ -31,6 +31,21 @@ describe("soal dan kunci IPIP", () => {
     const plus = Object.fromEntries(DIMS.map((d) => [d.key, ITEMS.filter(([, x, k]) => x === d.key && k > 0).length]));
     // Sumber: E 5+, A 6+, C 6+, Stabilitas 2+, Imajinasi 7+
     expect(plus).toEqual({ E: 5, A: 6, C: 6, S: 2, I: 7 });
+  });
+});
+
+describe("dua bahasa", () => {
+  test("nama karakter: kunci sama, nama per bahasa", () => {
+    const s = { E: 90, A: 75, C: 50, S: 50, I: 50 };
+    expect(personaKey(s)).toBe("E1.A1");
+    expect(persona(s)).toBe("Si Penggembira yang Hangat");
+    expect(persona(s, "en")).toBe("The Warm Cheerleader");
+    expect(personaName("bukan", "en")).toBe("");
+    expect(basePersonas("en").map(p => p.key)).toEqual(basePersonas().map(p => p.key));
+  });
+  test("butir bahasa Inggris = butir asli IPIP", () => {
+    expect(itemText("en")).toEqual(ITEM_META.map(m => m.en));
+    expect(itemText("id")).toEqual(ITEMS.map(([t]) => t));
   });
 });
 
@@ -118,6 +133,20 @@ describe("API", () => {
     expect(r.personas.reduce((t: number, p: any) => t + p.n, 0)).toBe(2);
     expect(r.personas.map((p: any) => p.name).sort()).toEqual([persona({ E: 50, A: 100, C: 50, S: 50, I: 50 }), "Si Penyeimbang"].sort());
     expect(r.personas.find((p: any) => p.name === "Si Penyeimbang").avg).toEqual({ E: 50, A: 50, C: 50, S: 50, I: 50 });
+  });
+  test("rekap mengirim kunci karakter yang bisa diterjemahkan", async () => {
+    const r = await (await fetch(base + "/api/stats")).json();
+    for (const p of r.personas) expect(personaName(p.key, "id")).toBe(p.name);
+    expect(r.personas.map((p: any) => personaName(p.key, "en")).sort()).toEqual(["The Balancer", "The Caregiver"]);
+  });
+  test("halaman share dan gambar ikut ?lang=en", async () => {
+    const html = await (await fetch(base + "/h/73-55-40-80-30?lang=en")).text();
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain("Extraversion 73");
+    expect(html).toContain("/og/73-55-40-80-30.png?lang=en");
+    expect(html).toContain(persona({ E: 73, A: 55, C: 40, S: 80, I: 30 }, "en"));
+    const png = await fetch(base + "/og/73-55-40-80-30.png?lang=en");
+    expect(png.status).toBe(200);
   });
   test("tolak body rusak dan metode salah", async () => {
     expect((await fetch(base + "/api/results", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" })).status).toBe(400);

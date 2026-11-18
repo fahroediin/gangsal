@@ -20,14 +20,32 @@ export const DIMS = [
     low: "Membumi", high: "Imajinatif",
     about: "Seberapa tertarik kamu pada ide, gagasan abstrak, dan hal-hal baru. Di IPIP disebut Intelek/Imajinasi; padanan terdekatnya di OCEAN adalah Keterbukaan (O)." }
 ];
+export const DIMS_EN = [
+  { key: "E", name: "Extraversion", short: "Extraversion", low: "Reserved", high: "Outgoing",
+    about: "How much you draw energy from social contact and busy places." },
+  { key: "A", name: "Agreeableness", short: "Agreeableness", low: "Direct", high: "Warm",
+    about: "How much you put cooperation, empathy and trust in others first." },
+  { key: "C", name: "Conscientiousness", short: "Conscientious", low: "Spontaneous", high: "Orderly",
+    about: "How planned, tidy and persistent you are in getting tasks done." },
+  { key: "S", name: "Emotional Stability", short: "Stability", low: "Sensitive", high: "Calm",
+    about: "How calm you stay under pressure. The opposite of a tendency to worry or feel unsettled." },
+  { key: "I", name: "Imagination", short: "Imagination", low: "Grounded", high: "Imaginative",
+    about: "How drawn you are to ideas, abstract thinking and new things. IPIP calls it Intellect/Imagination; its closest OCEAN match is Openness (O)." }
+];
+/** Data per bahasa. lang: "id" | "en". */
+export const dims = lang => lang === "en" ? DIMS_EN : DIMS;
 
 // [teks, dimensi, arah] dalam urutan asli IPIP (dimensi berselang-seling, kunci + dan - bergantian).
 export const ITEMS = ITEMS_ID.map(([, text, , dim, key]) => [text, dim, key]);
 /** Kode butir (E1, A2, ...) dan butir asli bahasa Inggris, untuk halaman metode dan analisis reliabilitas. */
 export const ITEM_META = ITEMS_ID.map(([code, , en]) => ({ code, en }));
+/** Teks butir per bahasa. Versi Inggris = butir asli IPIP (Goldberg, 1992). */
+export const itemText = lang => ITEMS_ID.map(([, id, en]) => lang === "en" ? en : id);
 
 export const SCALE = ["Sangat tidak sesuai", "Agak tidak sesuai", "Netral", "Agak sesuai", "Sangat sesuai"];
 export const SCALE_SHORT = ["Sangat tidak", "Tidak", "Netral", "Sesuai", "Sangat sesuai"];
+/** Label tingkat untuk ditampilkan. Kuncinya tetap rendah/sedang/tinggi di data dan API. */
+export const levelName = (lv, lang) => lang === "en" ? { rendah: "low", sedang: "medium", tinggi: "high" }[lv] : lv;
 
 /** answers: array 50 angka 1..5 (atau null). Hasil: skor 0..100 per dimensi, dibulatkan. */
 export function score(answers) {
@@ -78,6 +96,8 @@ export function decode(code) {
 }
 
 // Nama karakter dari dua sifat paling menonjol (jarak terjauh dari 50).
+// Kunci karakter: "B" (penyeimbang), "C1" (satu sifat), atau "C1.A1" (dua sifat). 1 = ujung tinggi, 0 = rendah.
+// Server mengirim kunci ini di rekap; browser menerjemahkannya ke nama dalam bahasa yang dipilih.
 export const NOUN = {
   E: ["Si Pengamat", "Si Penggembira"],
   A: ["Si Pemberi Kritik", "Si Penyayang"],
@@ -92,14 +112,46 @@ const ADJ = {
   S: ["yang Peka", "yang Tenang"],
   I: ["yang Membumi", "yang Imajinatif"]
 };
+const NOUN_EN = {
+  E: ["Observer", "Cheerleader"],
+  A: ["Critic", "Caregiver"],
+  C: ["Free Spirit", "Planner"],
+  S: ["Feeler", "Steady One"],
+  I: ["Pragmatist", "Idea Explorer"]
+};
+const ADJ_EN = {
+  E: ["Quiet", "Outgoing"],
+  A: ["Blunt", "Warm"],
+  C: ["Easygoing", "Tidy"],
+  S: ["Sensitive", "Calm"],
+  I: ["Grounded", "Imaginative"]
+};
+const BALANCED = { id: "Si Penyeimbang", en: "The Balancer" };
+
+export function personaKey(s) {
+  const ranked = ORDER.map(k => ({ k, d: Math.abs(s[k] - 50), hi: s[k] >= 50 ? 1 : 0 })).sort((a, b) => b.d - a.d);
+  if (ranked[0].d < 12) return "B";
+  const [a, b] = ranked;
+  return b.d < 12 ? a.k + a.hi : `${a.k}${a.hi}.${b.k}${b.hi}`;
+}
+export function personaName(key, lang = "id") {
+  if (!/^(B|[EACSI][01](\.[EACSI][01])?)$/.test(key || "")) return "";
+  if (key === "B") return BALANCED[lang === "en" ? "en" : "id"];
+  const [a, b] = key.split(".").map(x => ({ k: x[0], hi: +x[1] }));
+  if (lang === "en") return b ? `The ${ADJ_EN[b.k][b.hi]} ${NOUN_EN[a.k][a.hi]}` : `The ${NOUN_EN[a.k][a.hi]}`;
+  return b ? `${NOUN[a.k][a.hi]} ${ADJ[b.k][b.hi]}` : NOUN[a.k][a.hi];
+}
+export const persona = (s, lang = "id") => personaName(personaKey(s), lang);
+
 /** 11 karakter dasar: Si Penyeimbang + ujung tinggi/rendah tiap dimensi (dimensi lain 50). */
-export function basePersonas() {
+export function basePersonas(lang = "id") {
   const mid = { E: 50, A: 50, C: 50, S: 50, I: 50 };
+  const en = lang === "en";
   return [
-    { name: "Si Penyeimbang", avg: { ...mid }, trait: "Kelima sisi di tengah" },
-    ...DIMS.flatMap(d => [1, 0].map(hi => ({
-      name: NOUN[d.key][hi], avg: { ...mid, [d.key]: hi ? 90 : 10 },
-      trait: `${d.name} ${hi ? "tinggi" : "rendah"}`,
+    { key: "B", name: personaName("B", lang), avg: { ...mid }, trait: en ? "All five sides in the middle" : "Kelima sisi di tengah" },
+    ...dims(lang).flatMap(d => [1, 0].map(hi => ({
+      key: d.key + hi, name: personaName(d.key + hi, lang), avg: { ...mid, [d.key]: hi ? 90 : 10 },
+      trait: `${d.name} ${en ? (hi ? "high" : "low") : (hi ? "tinggi" : "rendah")}`,
     }))),
   ];
 }
@@ -112,13 +164,8 @@ export const OCEAN = [
   { k: "A", name: "Keramahan", dim: "A", from: s => s.A },
   { k: "N", name: "Neurotisisme", dim: "S", from: s => 100 - s.S },
 ];
-
-export function persona(s) {
-  const ranked = ORDER.map(k => ({ k, d: Math.abs(s[k] - 50), hi: s[k] >= 50 ? 1 : 0 })).sort((a, b) => b.d - a.d);
-  if (ranked[0].d < 12) return "Si Penyeimbang";
-  const [a, b] = ranked;
-  return b.d < 12 ? NOUN[a.k][a.hi] : `${NOUN[a.k][a.hi]} ${ADJ[b.k][b.hi]}`;
-}
+const OCEAN_EN_NAMES = { O: "Openness", C: "Conscientiousness", E: "Extraversion", A: "Agreeableness", N: "Neuroticism" };
+export const ocean = lang => lang === "en" ? OCEAN.map(o => ({ ...o, name: OCEAN_EN_NAMES[o.k] })) : OCEAN;
 
 // Penjelasan per dimensi per level.
 export const TEXT = {
@@ -148,3 +195,32 @@ export const TEXT = {
     tinggi: "Kamu penuh rasa ingin tahu dan imajinasi. Gagasan baru, pertanyaan besar, dan cara pandang berbeda membuatmu bersemangat."
   }
 };
+
+export const TEXT_EN = {
+  E: {
+    rendah: "You tend to keep your energy for yourself. A deep talk with a few people means more to you than a crowd, and time alone helps you recharge.",
+    sedang: "You can enjoy both a crowd and time alone. You adapt to the situation: active when needed, quiet when that is enough.",
+    tinggi: "You come alive around other people. Starting a conversation feels easy, and a room gets livelier when you are in it."
+  },
+  A: {
+    rendah: "You are direct and not easily swayed by other people's feelings. You are willing to disagree and you judge things as they are.",
+    sedang: "You can be warm and firm at the same time. You care about others while still looking after your own interests.",
+    tinggi: "You are tuned in to other people's feelings and like to help. People feel at ease around you, and you value harmony."
+  },
+  C: {
+    rendah: "You are spontaneous and flexible. Rigid plans feel confining, and you are comfortable working things out as you go.",
+    sedang: "You plan enough for the things that matter, but a little everyday mess does not bother you.",
+    tinggi: "You are organised, thorough and dependable. Schedules and to-do lists help you, and your work rarely gets left undone."
+  },
+  S: {
+    rendah: "You feel pressure strongly and your mood shifts easily. That sensitivity helps you notice problems early, though it can be tiring.",
+    sedang: "You are usually fairly calm, but piled-up pressure can still unsettle you. Most people experience this.",
+    tinggi: "You are calm and rarely carried away by worry. When things get chaotic, you tend to keep a cool head."
+  },
+  I: {
+    rendah: "You are practical and like things that are clear and proven. You care more about what can be used right away than about theory.",
+    sedang: "You are open to new ideas as long as they are useful. You can think abstractly while keeping your feet on the ground.",
+    tinggi: "You are full of curiosity and imagination. New ideas, big questions and different points of view excite you."
+  }
+};
+export const texts = lang => lang === "en" ? TEXT_EN : TEXT;

@@ -464,7 +464,7 @@ input[aria-invalid="true"]{border-color:var(--warn)}
 .seg-btn[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 0 var(--line)}
 .seg-btn:disabled{opacity:.5;cursor:not-allowed}
 .seg-btn:focus-visible{outline:3px solid var(--focus, var(--ink));outline-offset:2px}
-@media (max-width:400px){.seg{display:flex;width:100%}.seg-btn{flex:1;padding:0 8px;font-size:.9rem}}
+@media (max-width:400px){.seg{display:flex;width:100%}.seg-btn{flex:1 1 0;min-width:0;padding:4px 8px;font-size:.9rem;white-space:normal;line-height:1.2}}
 .levels.compact .lv-row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);align-items:center;gap:14px}
 .levels.compact .lv-label{flex-direction:column;gap:0;line-height:1.25}
 .levels.compact .lv-label span{font-size:.88rem}
@@ -478,3 +478,7 @@ input[aria-invalid="true"]{border-color:var(--warn)}
 }
 .levels.compact .lv-label > b{font-size:1rem;white-space:nowrap}
 @media (max-width:760px){.levels.compact .lv-label > b{font-size:.92rem}}
+/* bahasa */
+.lang-btn span{font-weight:700;letter-spacing:.02em}
+html[lang="en"] .disclaimer summary::after{content:"More"}
+html[lang="en"] .disclaimer[open] summary::after{content:"Close"}

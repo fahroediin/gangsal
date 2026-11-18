@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync, statSync, chmodSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join, normalize, dirname, sep } from "node:path";
-import { ITEMS, DIMS, score, level, decode, persona, normsReady, CONSENT_VERSION } from "./public/core.js";
+import { ITEMS, DIMS, dims, score, level, decode, persona, personaKey, personaName, normsReady, CONSENT_VERSION } from "./public/core.js";
 import { characterSVG } from "./public/character.js";
 import { ogPNG, ogCached } from "./og.ts";
 
@@ -215,13 +215,14 @@ function stats(): string {
   const groups = new Map<string, { n: number; sum: Record<string, number> }>();
   for (const r of rows) {
     const s = { E: r.e, A: r.a, C: r.c, S: r.s, I: r.i };
-    const name = persona(s);
-    const g = groups.get(name) ?? { n: 0, sum: { E: 0, A: 0, C: 0, S: 0, I: 0 } };
+    const key = personaKey(s);
+    const g = groups.get(key) ?? { n: 0, sum: { E: 0, A: 0, C: 0, S: 0, I: 0 } };
     g.n++; for (const k of Object.keys(s)) g.sum[k] += (s as any)[k];
-    groups.set(name, g);
+    groups.set(key, g);
   }
-  const personas = [...groups].map(([name, g]) => ({
-    name, n: g.n, avg: Object.fromEntries(Object.entries(g.sum).map(([k, v]) => [k, Math.round(v / g.n)])),
+  // key = kunci karakter (diterjemahkan di browser sesuai bahasa); name = nama bahasa Indonesia untuk klien lama.
+  const personas = [...groups].map(([key, g]) => ({
+    key, name: personaName(key), n: g.n, avg: Object.fromEntries(Object.entries(g.sum).map(([k, v]) => [k, Math.round(v / g.n)])),
   })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   const body = JSON.stringify({ total: rows.length, avg, levels, personas, norms, normsReady: ready });
   statsCache = { at: Date.now(), body };
@@ -268,30 +269,34 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
+/** Bahasa dari ?lang=en; selain itu bahasa Indonesia. */
+const langOf = (url: URL): "id" | "en" => url.searchParams.get("lang") === "en" ? "en" : "id";
 // index.html dibaca sekali saat start (bukan per permintaan).
 const INDEX_HTML = readFileSync(join(PUBLIC, "index.html"), "utf8");
 
 /** index.html dengan meta Open Graph khusus hasil, supaya pratinjau tautan menampilkan nama karakter. */
-export function sharePage(code: string, origin: string): string | null {
+export function sharePage(code: string, origin: string, lang: "id" | "en" = "id"): string | null {
   const s = shareCode(code);
   if (!s) return null;
-  const name = persona(s);
-  const desc = DIMS.map((d) => `${d.short} ${s[d.key]}`).join(" · ") + ". Ikut tes dan buat karaktermu.";
+  const en = lang === "en", q = en ? "?lang=en" : "";
+  const name = persona(s, lang);
+  const desc = dims(lang).map((d) => `${d.short} ${s[d.key]}`).join(" · ") + (en ? ". Take the test and get your own character." : ". Ikut tes dan buat karaktermu.");
   const meta = [
     `<meta name="description" content="${escAttr(desc)}">`,
     `<meta property="og:type" content="website">`,
     `<meta property="og:title" content="${escAttr(name + " | Gangsal")}">`,
     `<meta property="og:description" content="${escAttr(desc)}">`,
-    `<meta property="og:url" content="${escAttr(origin + "/h/" + code)}">`,
-    `<meta property="og:image" content="${escAttr(origin + "/og/" + code + ".png")}">`,
+    `<meta property="og:url" content="${escAttr(origin + "/h/" + code + q)}">`,
+    `<meta property="og:image" content="${escAttr(origin + "/og/" + code + ".png" + q)}">`,
     `<meta property="og:image:width" content="1200">`,
     `<meta property="og:image:height" content="630">`,
-    `<meta property="og:image:alt" content="${escAttr("Karakter " + name)}">`,
+    `<meta property="og:image:alt" content="${escAttr((en ? "Character: " : "Karakter ") + name)}">`,
     `<meta name="twitter:card" content="summary_large_image">`,
   ].join("\n");
   return INDEX_HTML
     .replace(/<!--META-->[\s\S]*?<!--\/META-->/, meta)
-    .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(name)} | Gangsal</title>`);
+    .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(name)} | Gangsal</title>`)
+    .replace('<html lang="id">', `<html lang="${lang}">`);
 }
 
 async function handle(req: Request, ip: string): Promise<Response> {
@@ -422,7 +427,7 @@ async function handle(req: Request, ip: string): Promise<Response> {
   // /h/<kode>: halaman hasil yang dibagikan
   if (path.startsWith("/h/")) {
     const code = safeDecode(path.slice(3));
-    const html = code === null ? null : sharePage(code, origin);
+    const html = code === null ? null : sharePage(code, origin, langOf(url));
     if (!html) return Response.redirect(origin + "/", 302);
     return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300", ...SECURITY } });
   }
@@ -431,14 +436,14 @@ async function handle(req: Request, ip: string): Promise<Response> {
   if (om) {
     const s = shareCode(om[1]);
     if (!s) return notFound();
-    const h = new URL(origin).host;
+    const h = new URL(origin).host, lang = langOf(url);
     // Render baru memakan CPU: dibatasi per IP dan total. Gambar yang sudah ada di cache selalu dilayani.
-    if (!ogCached(om[1], h)) {
+    if (!ogCached(om[1], h, lang)) {
       if (LIMITS.ogIp(ip)) return tooMany(600);
       if (LIMITS.ogAll("*")) return text("Server sedang sibuk membuat gambar. Coba lagi sebentar lagi.", 503, { "Retry-After": "60" });
     }
     try {
-      return new Response(ogPNG(om[1], s, h), {
+      return new Response(ogPNG(om[1], s, h, lang), {
         headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=604800, immutable", ...SECURITY },
       });
     } catch (e) {

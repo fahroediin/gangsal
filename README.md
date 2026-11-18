@@ -12,6 +12,7 @@ A Big Five personality test in Indonesian. You answer 50 short statements and ge
 - **Shareable results.** `/h/<code>` opens the result page for anyone. Link previews on WhatsApp, X and other platforms show a 1200x630 image of the character and the scores.
 - **Anonymous recap.** The server stores the raw answers without names or emails and shows averages and the spread of levels across all participants.
 - **Invitations for teams and HR.** Create an invitation at `/undang` without an account, share an 8-character code or link, and see every participant's name and scores on a private recap page. See [Invitations](#invitations).
+- **Indonesian and English.** A language button in the header switches every page, including the method page. The English version shows the original IPIP items. The choice is saved in the browser; `?lang=en` on a shared result link also gives an English link preview image.
 - **Built for readers aged 20 to 50.** Atkinson Hyperlegible for body text, large touch targets, light and dark themes, and layouts tested from 320px phones to 1440px desktops, including phones in landscape.
 
 ### How the character is built
