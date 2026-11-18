@@ -14,6 +14,9 @@ const persona = s => personaL(s, lang);
 const basePersonas = () => basePersonasL(lang);
 const LOC = () => lang === "en" ? "en-GB" : "id-ID";
 const langQ = () => lang === "en" ? "?lang=en" : "";
+/** "peserta" / "participant(s)": bahasa Indonesia tidak berubah untuk jamak. */
+const pt = n => L("peserta", n === 1 ? "participant" : "participants");
+const peopleWord = n => L("orang sudah ikut", n === 1 ? "person so far" : "people so far");
 
 const TOTAL = ITEMS.length;
 const SAMPLE = { E: 68, A: 74, C: 41, S: 55, I: 82 };
@@ -181,7 +184,7 @@ function viewIntro(){
         "Answer 50 short statements. You get a score on each of the five Big Five dimensions and an animated character shaped by your scores.")}</p>
       <div class="facts">
         <span><b class="num">50</b> ${L("pernyataan","statements")}</span><span><b class="num">8</b> ${L("menit","minutes")}</span>
-        <span class="live" aria-live="polite"><b class="num" id="liveCount">${liveTotal === null ? "..." : fmtNum(liveTotal)}</b> ${L("orang sudah ikut","people so far")} <a href="#rekap">${L("lihat rekapnya","see the recap")}</a></span>
+        <span class="live" aria-live="polite"><b class="num" id="liveCount">${liveTotal === null ? "..." : fmtNum(liveTotal)}</b> <span id="liveWord">${peopleWord(liveTotal)}</span> <a href="#rekap">${L("lihat rekapnya","see the recap")}</a></span>
       </div>
       <div class="row">
         <button class="btn primary" id="start" type="button">${n ? L(`Lanjutkan, sudah ${n} dari ${TOTAL}`, `Continue, ${n} of ${TOTAL} done`) : L("Mulai tes","Start the test")}</button>
@@ -508,7 +511,7 @@ async function loadRecap(){
     liveTotal = recap.total;
   }catch(e){ if (recap === null) recapErr = "load"; }
   finally{ clearTimeout(timer); loadingStats = false; }
-  const el = $("#liveCount"); if (el && liveTotal !== null) el.textContent = fmtNum(liveTotal);
+  const el = $("#liveCount"); if (el && liveTotal !== null){ el.textContent = fmtNum(liveTotal); $("#liveWord").textContent = peopleWord(liveTotal); }
   renderHomeRecap();
 }
 const refreshLive = loadRecap;
@@ -537,7 +540,7 @@ function renderHomeRecap(){
         <div>
           <p class="who">${L("Semua peserta digabung jadi satu karakter:","All participants combined into one character:")}</p>
           <p class="hrecap-name">${esc(persona(recap.avg))}</p>
-          <p class="hrecap-count"><b class="num">${fmtNum(n)}</b> ${L("peserta","participants")}</p>
+          <p class="hrecap-count"><b class="num">${fmtNum(n)}</b> ${pt(n)}</p>
         </div>
       </div>
       <div>
@@ -562,7 +565,7 @@ function renderCatalog(){
   if (!catTab && recap) catTab = people.length ? "peserta" : "semua";
   if (catTab === "peserta" && !people.length) catTab = "semua";
   const items = (catTab || "semua") === "peserta"
-    ? people.map(p=>personaCard(p, `<span class="pmeta"><b class="num">${p.n}</b> ${L("peserta","participants")}, ${Math.round(p.n/recap.total*100)}%</span>`))
+    ? people.map(p=>personaCard(p, `<span class="pmeta"><b class="num">${p.n}</b> ${pt(p.n)}, ${Math.round(p.n/recap.total*100)}%</span>`))
     : basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`));
   const x = list.scrollLeft;
   list.innerHTML = items.join("");
@@ -931,7 +934,7 @@ async function viewInviteRecap(code, opts = {}){
     <div class="inv-meta">
       <span class="pill ${inv.open ? "open" : "closed"}">${inv.open ? L("Terbuka","Open") : L("Ditutup","Closed")}</span>
       <span>${inv.open ? L(`Sampai ${fmtTime(inv.expiresAt)}, ${fmtLeft(inv.expiresAt-now)}`, `Until ${fmtTime(inv.expiresAt)}, ${fmtLeft(inv.expiresAt-now)}`) : L(`Ditutup ${inv.full ? "karena kuota penuh" : fmtTime(inv.expiresAt)}`, `Closed ${inv.full ? "because it is full" : fmtTime(inv.expiresAt)}`)}</span>
-      <span><b class="num">${n}</b>${inv.maxParticipants ? L(` dari ${inv.maxParticipants}`, ` of ${inv.maxParticipants}`) : ""} ${L("peserta","participants")}</span>
+      <span><b class="num">${n}</b>${inv.maxParticipants ? L(` dari ${inv.maxParticipants}`, ` of ${inv.maxParticipants}`) : ""} ${pt(inv.maxParticipants || n)}</span>
     </div>
     <div class="row refresh-row">
       <button class="btn" type="button" id="reloadRecap">${L("Muat ulang","Reload")}</button>
@@ -949,7 +952,7 @@ async function viewInviteRecap(code, opts = {}){
     <p class="note">${L("Skor 0-100 adalah persen dari skor maksimum (POMP), bukan persentil.","Scores 0-100 are percent of maximum possible score (POMP), not percentiles.")} ${levelBasisNote()} ${L("Gunakan sebagai bahan percakapan, bukan satu-satunya dasar keputusan; untuk keputusan seleksi, libatkan psikolog.","Use them to start a conversation, not as the only basis for decisions; involve a psychologist for selection decisions.")} <a href="/metode">${L("Metode dan rujukan","Method and references")}</a>.</p>
   </section>
   ${n ? `<section class="profile inv-avg">
-    <div><h2 style="margin-bottom:12px">${L(`Rata-rata ${n} peserta`, `Average of ${n} participants`)}</h2>${radar(avg, L("Rata-rata peserta undangan","Invitation participants' average"))}</div>
+    <div><h2 style="margin-bottom:12px">${L(`Rata-rata ${n} peserta`, `Average of ${n} ${pt(n)}`)}</h2>${radar(avg, L("Rata-rata peserta undangan","Invitation participants' average"))}</div>
     <div class="result-copy" style="align-self:center"><div class="stage">${characterSVG(avg, {title:L("Karakter rata-rata","Average character")})}</div><p class="lede" style="text-align:center">${persona(avg)}</p></div>
   </section>
   <section class="catalog" aria-labelledby="ipTitle">
@@ -958,7 +961,7 @@ async function viewInviteRecap(code, opts = {}){
       ${oceanLegend()}
     </div>
     <ul class="plist">${groupByPersona(rows).map(p=>personaCard(p,
-      `<span class="pmeta"><b class="num">${p.n}</b> ${L("peserta","participants")}, ${Math.round(p.n/n*100)}%</span>${p.members.length ? `<span class="pmembers">${p.members.map(esc).join(", ")}</span>` : ""}`)).join("")}</ul>
+      `<span class="pmeta"><b class="num">${p.n}</b> ${pt(p.n)}, ${Math.round(p.n/n*100)}%</span>${p.members.length ? `<span class="pmembers">${p.members.map(esc).join(", ")}</span>` : ""}`)).join("")}</ul>
   </section>` : ""}
   <section class="danger">
     <h2>${L("Hapus undangan","Delete invitation")}</h2>
