@@ -52,7 +52,6 @@ const reduceMotion = ()=>matchMedia("(prefers-reduced-motion: reduce)").matches;
 function setTitle(t){ document.title = t ? `${t} | Gangsal` : "Gangsal: Tes Kepribadian Big Five"; }
 function setNav(which){
   $("#navTest").setAttribute("aria-current", which==="test"?"page":"false");
-  $("#navRecap").setAttribute("aria-current", which==="recap"?"page":"false");
   $("#navInvite").setAttribute("aria-current", which==="invite"?"page":"false");
   if (which !== "test") quizActive = false;
 }
@@ -163,46 +162,39 @@ function viewIntro(){
   <section class="home">
     <div class="home-copy">
       <h1>Kenali lima sisi kepribadianmu.</h1>
-      <p class="lede">Jawab 50 pernyataan singkat tentang dirimu. Hasilnya berupa skor di lima dimensi kepribadian Big Five, dan satu karakter animasi yang bentuknya mengikuti skormu.</p>
-      <div class="facts"><span><b class="num">50</b> pernyataan</span><span><b class="num">8</b> menit</span><span><b class="num">0</b> data pribadi</span></div>
+      <p class="lede">Jawab 50 pernyataan singkat. Kamu mendapat skor lima dimensi kepribadian Big Five dan karakter animasi yang bentuknya mengikuti skormu.</p>
+      <div class="facts">
+        <span><b class="num">50</b> pernyataan</span><span><b class="num">8</b> menit</span>
+        <span class="live" aria-live="polite"><b class="num" id="liveCount">${liveTotal === null ? "..." : fmtNum(liveTotal)}</b> orang sudah ikut <a href="#rekap">lihat sebarannya</a></span>
+      </div>
       <div class="row">
         <button class="btn primary" id="start" type="button">${n ? `Lanjutkan, sudah ${n} dari ${TOTAL}` : "Mulai tes"}</button>
         ${n ? `<button class="btn" id="restart" type="button">Mulai dari awal</button>` : `<button class="btn link" id="toTeams" type="button">Untuk tim dan HR</button>`}
       </div>
-      <p class="fineprint">Gangsal artinya lima dalam bahasa Jawa. Tanpa daftar akun. Jawabanmu tersimpan di perangkat ini, jadi bisa dilanjutkan nanti. Hasil untuk refleksi diri, bukan diagnosis. <a href="#disclaimer">Baca disclaimer</a>.</p>
+      <p class="fineprint">Gangsal artinya lima dalam bahasa Jawa. Tanpa akun; jawabanmu tersimpan di perangkat ini.</p>
     </div>
     <div class="home-art">${pentaFrame(SAMPLE)}</div>
-  </section>
-  <section class="dims" aria-label="Lima dimensi yang diukur">
-    ${DIMS.map(d=>`<div><i style="background:var(--d-${DK[d.key]})"></i><b>${d.name}</b><span>${d.about}</span></div>`).join("")}
   </section>
   <section class="catalog" aria-labelledby="catTitle">
     <div class="catalog-head">
       <h2 id="catTitle">Karakter yang bisa kamu dapat</h2>
-      <p class="lede">Nama karaktermu berasal dari sifat yang paling menonjol. Bila ada sifat kedua yang juga menonjol, namanya digabung, misalnya <i>Si Perancang yang Hangat</i>. Ini sebelas karakter dasarnya.</p>
-      <p class="note" style="margin-top:0">Karakter adalah ilustrasi supaya hasil mudah diingat, bukan tipe kepribadian. Big Five mengukur lima sifat sebagai rentang, dan skor lengkapmu tetap ditampilkan. <a href="/metode#karakter">Kenapa begitu</a>.</p>
+      <p class="note" style="margin-top:0">Nama karakter diambil dari sifat yang paling menonjol, misalnya <i>Si Perancang yang Hangat</i>. Karakter adalah ilustrasi, bukan tipe kepribadian. <a href="/metode#karakter">Kenapa</a>.</p>
       ${OCEAN_LEGEND}
     </div>
     <ul class="plist collapsed" id="catList">${basePersonas().map(p=>personaCard(p, `<span class="pmeta">${p.trait}</span>`)).join("")}</ul>
-    <div><button class="btn" type="button" id="catMore" aria-controls="catList" aria-expanded="false">Lihat ${basePersonas().length - 6} karakter lainnya</button></div>
+    <div class="cat-more"><button class="btn" type="button" id="catMore" aria-controls="catList" aria-expanded="false">Lihat ${basePersonas().length - 6} karakter lainnya</button></div>
   </section>
   <section class="teams" aria-labelledby="teamsTitle">
     <div class="teams-copy">
-      <h2 id="teamsTitle">Pakai Gangsal untuk tim atau calon karyawan.</h2>
-      <p class="lede">Buat satu kode undangan, bagikan ke peserta, lalu lihat nama dan hasil setiap pengisi di satu halaman rekap. Tanpa daftar akun, gratis.</p>
+      <h2 id="teamsTitle">Untuk tim dan calon karyawan.</h2>
+      <p>Buat kode undangan, bagikan, lalu lihat nama dan hasil setiap peserta di satu halaman. Nama dienkripsi; hanya kamu yang bisa membacanya.</p>
       <div class="row"><button class="btn primary" id="toInvite" type="button">Buat undangan</button></div>
     </div>
-    <ol class="steps">
-      <li><b>Buat undangan</b><span>Beri judul, pilih batas waktu (1 jam sampai 30 hari) dan batas jumlah peserta.</span></li>
-      <li><b>Bagikan kode</b><span>Peserta membuka link atau mengetik kode 8 huruf, mengisi nama, lalu mengerjakan tes.</span></li>
-      <li><b>Lihat rekap</b><span>Nama, skor lima dimensi, dan karakter setiap peserta. Bisa diunduh sebagai CSV.</span></li>
-    </ol>
-    <p class="teams-note">Nama peserta dienkripsi di perangkat peserta. Hanya pemegang link rekap yang bisa membacanya, termasuk kami pun tidak.</p>
     <form class="joincode" id="joinForm" novalidate>
       <label for="joinCode">Punya kode undangan?</label>
       <div class="row">
         <input id="joinCode" name="joinCode" inputmode="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="9" placeholder="contoh: k7m2x9pq">
-        <button class="btn" type="submit">Buka undangan</button>
+        <button class="btn" type="submit">Buka</button>
       </div>
       <p class="field-error" id="joinErr" role="alert" hidden></p>
     </form>
@@ -215,6 +207,7 @@ function viewIntro(){
     if (!open) $("#catTitle").scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" });
   };
   if ($("#toTeams")) $("#toTeams").onclick = ()=>{ $(".teams").scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block:"start"}); $("#teamsTitle").setAttribute("tabindex","-1"); $("#teamsTitle").focus({preventScroll:true}); };
+  refreshLive();
   $("#joinForm").onsubmit = e=>{
     e.preventDefault();
     const c = $("#joinCode").value.trim().toLowerCase().replace(/[\s-]/g, "");
@@ -406,7 +399,7 @@ function viewResult(s, code){
         <p>${TEXT[d.key][lv]}</p>
       </article>`; }).join("")}
       <p class="note">Skor 0 sampai 100 adalah persen dari skor maksimum yang mungkin (POMP), dihitung dari jawabanmu sendiri; bukan persentil. ${levelBasisNote()} Tidak ada skor yang lebih baik; tiap ujung punya kelebihannya. <a href="/metode">Cara penghitungan dan rujukan</a>.</p>
-      ${mine ? `<div class="row" style="margin-top:20px"><button class="btn" id="again" type="button">Ulangi tes</button><button class="btn link" id="toRecap2" type="button">Lihat rekap peserta</button></div>` : ""}
+      ${mine ? `<div class="row" style="margin-top:20px"><button class="btn" id="again" type="button">Ulangi tes</button></div>` : ""}
     </div>
   </section>`;
   if (mine) updateSaveStatus();
@@ -432,7 +425,6 @@ function viewResult(s, code){
   };
   if ($("#tryIt")) $("#tryIt").onclick = ()=>{ resetTest(); nav("/#tes"); };
   if ($("#again")) $("#again").onclick = ()=>{ resetTest(); nav("/#tes"); };
-  if ($("#toRecap2")) $("#toRecap2").onclick = ()=>nav("/#rekap");
 }
 
 async function renderCard(s, name){
@@ -465,19 +457,30 @@ async function renderCard(s, name){
 }
 function rr(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
 
-/* ---------- rekap ---------- */
+/* ---------- rekap dan total live ---------- */
+// Satu sumber data untuk total pengguna di beranda, norma, dan halaman rekap. Diperbarui otomatis.
+let liveTotal = null;
+const fmtNum = n => Number(n).toLocaleString("id-ID");
+let loadingStats = false;
 async function loadRecap(){
-  recapErr = null;
+  if (loadingStats) return;
+  loadingStats = true;
   const ctl = new AbortController(); const timer = setTimeout(()=>ctl.abort(), 10000);
   try{
-    const res = await fetch("/api/stats", {signal:ctl.signal});
+    const res = await fetch("/api/stats", { signal: ctl.signal, cache: "no-store" });
     if (!res.ok) throw new Error(String(res.status));
-    recap = await res.json();
+    recap = await res.json(); recapErr = null;
     if (recap.norms) NORMS = recap.norms;
-  }catch(e){ recapErr = "Rekap gagal dimuat. Periksa koneksi internet, lalu tekan Rekap lagi."; }
-  finally{ clearTimeout(timer); }
-  if (location.hash==="#rekap") viewRecap();
+    liveTotal = recap.total;
+  }catch(e){ if (recap === null) recapErr = "Rekap belum bisa dimuat. Halaman ini akan mencoba lagi otomatis."; }
+  finally{ clearTimeout(timer); loadingStats = false; }
+  const el = $("#liveCount"); if (el && liveTotal !== null) el.textContent = fmtNum(liveTotal);
+  if (location.pathname === "/" && location.hash === "#rekap"){ const y = scrollY; viewRecap(); scrollTo(0, y); }
 }
+const refreshLive = loadRecap;
+const onLivePage = () => location.pathname === "/" && (location.hash === "" || location.hash === "#rekap");
+setInterval(()=>{ if (!document.hidden && onLivePage()) loadRecap(); }, 30_000);
+document.addEventListener("visibilitychange", ()=>{ if (!document.hidden && onLivePage()) loadRecap(); });
 
 function viewRecap(){
   setNav("recap"); setTitle("Rekap peserta");
@@ -528,9 +531,8 @@ function viewRecap(){
   $("#view").innerHTML = `
     ${recap && recap.total ? "" : `<h1 style="margin-bottom:24px">Rekap peserta</h1>`}
     ${body}
-    <div class="row" style="margin-top:32px"><button class="btn primary" id="toTest" type="button">Ikut tes</button>${recap?`<button class="btn link" id="refresh" type="button">Muat ulang rekap</button>`:""}</div>`;
+    <div class="row" style="margin-top:32px"><button class="btn primary" id="toTest" type="button">Ikut tes</button><span class="hint">Angka di halaman ini diperbarui otomatis setiap 30 detik.</span></div>`;
   $("#toTest").onclick = ()=>nav("/#tes");
-  if ($("#refresh")) $("#refresh").onclick = ()=>{ recap = null; viewRecap(); };
 }
 
 /* ---------- undangan: daftar milik perangkat ini ---------- */
@@ -1113,7 +1115,7 @@ function route(){
   }
   if (h==="tes") viewTest();
   else if (h==="rekap") viewRecap();
-  else if (h==="disclaimer"){ viewIntro(); $("#disclaimer").scrollIntoView(); }
+  else if (h==="disclaimer"){ viewIntro(); $("#disclaimer").open = true; $("#disclaimer").scrollIntoView(); }
   else viewIntro();
 }
 window.addEventListener("popstate", route);
@@ -1121,7 +1123,6 @@ window.addEventListener("hashchange", ()=>{ route(); if (location.hash!=="#discl
 $("#brand").onclick = e=>{ e.preventDefault(); nav("/"); };
 document.querySelector(".skip").onclick = e=>{ e.preventDefault(); $("#view").focus(); };
 $("#navTest").onclick = ()=>nav("/#tes");
-$("#navRecap").onclick = ()=>nav("/#rekap");
 $("#navInvite").onclick = ()=>nav("/undang");
 $("#themeBtn").onclick = ()=>{ const t = THEMES[(THEMES.indexOf(currentTheme())+1)%3]; if (t==="system") lsDel("gangsal-theme"); else lsSet("gangsal-theme", t); applyTheme(t); };
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", ()=>applyTheme(currentTheme()));
